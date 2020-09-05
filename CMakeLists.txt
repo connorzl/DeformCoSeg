@@ -16,6 +16,8 @@ set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}")
 set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG}")
 set(Ceres_DIR "/home/maxjiang/Codes/ShapeDeform/3rd_party/ceres-solver/cmake/Ceres")
 
+add_definitions(-DCERES_USE_CXX11_THREADS)
+
 find_package(Ceres REQUIRED)
 
 set(CERES_INCLUDE_PATH "3rd_party/ceres-solver/include")
@@ -113,11 +115,11 @@ target_link_libraries(
 )
 
 execute_process (
-    COMMAND python -c "import sys; print('.'.join(sys.version.split(' (')[0].split('.')[:2]))"
+    COMMAND python3 -c "import sys; print('.'.join(sys.version.split(' (')[0].split('.')[:2]))"
     OUTPUT_VARIABLE PY_VERSION
 )
 execute_process (
-    COMMAND python -c "import subprocess; print('/'.join(subprocess.check_output(['which', 'python']).decode('utf-8').split('/')[:-2]))"
+    COMMAND python3 -c "import subprocess; print('/'.join(subprocess.check_output(['which', 'python3']).decode('utf-8').split('/')[:-2]))"
     OUTPUT_VARIABLE PY_BASEDIR
 )
 string(STRIP ${PY_VERSION} PY_VERSION)
@@ -129,7 +131,7 @@ if(NOT TORCH_PATH)
     message('Consider to use -DTORCH_PATH your_path to specialize your path instead.')
 endif()
 
-add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1››)
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
 
 add_subdirectory("3rd_party/pybind11")
 
