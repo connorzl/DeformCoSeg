@@ -124,10 +124,12 @@ for it in range(0, niter):
 
 		current_loss = loss.item()
 
+# Evaluate final result.
 if save_path != '':
 	torch.save({'func':func, 'optim':optimizer}, save_path)
 
-GV1_deformed = func.forward(GV1_device)
+GV2_features, _, _ = pointnet(GV2_pointnet_input)
+GV1_deformed, _ = func.forward((GV1, GV2_features_device))
 GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
 V1_copy = V1.clone()
 #Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
