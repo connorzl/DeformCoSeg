@@ -49,6 +49,43 @@ import torch
 import pyDeform
 ```
 
+### Building on Remote Cluster
+```
+# install CERES without sudo privileges
+mkdir 3rd_party/eigen/build
+cd 3rd_party/eigen/build
+cmake -DCMAKE_INSTALL_PREFIX=.. ..
+make -j4
+make install
+
+cd ../../../
+mkdir 3rd_party/ceres-solver/ceres-bin
+cd 3rd_party/ceres-solver/ceres-bin
+cmake -DEXPORT_BUILD_DIR=ON -DCMAKE_INSTALL_PREFIX=. ..
+make -j4
+make test
+make install
+```
+Use CMakeLists_sc.txt when compiling on remote cluster.
+
+Build the pyDeform library:
+```
+mkdir build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make pyDeform -j8
+```
+
+If you want to build the other libraries for non NeuralODE deformation, change line 132 to:
+```
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
+```
+and then compile them similar to above.
+
+Finally, run the following:
+```
+export TORCH_USE_RTLD_GLOBAL=YES
+```
+
 ### Download data
 We already provide some demo shapes in the data folder. For playing with more shapes, try
 ```
