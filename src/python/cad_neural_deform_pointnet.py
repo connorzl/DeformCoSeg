@@ -92,13 +92,13 @@ for it in range(0, niter):
 	GV2_features_device = GV2_features.to(device)
 
 	# Compute and integrate velocity field for deformation.
-	GV1_deformed, GV2_features_deformed = func.forward((GV1, GV2_features_device))
+	GV1_deformed, GV2_features_deformed = func.forward((GV1_device, GV2_features_device))
 	# The target features should stay the same, since they are only used to integrate GV1.
 	if torch.norm(GV2_features_device - GV2_features_deformed) > eps:
 		raise ValueError("Non-identity target features deformation.")
 
 	# Same as above, but in opposite direction.
-	GV2_deformed, GV1_features_deformed  = func.inverse((GV2, GV1_features_device))
+	GV2_deformed, GV1_features_deformed  = func.inverse((GV2_device, GV1_features_device))
 	if torch.norm(GV1_features_device - GV1_features_deformed) > eps:
 		raise ValueError("Non-identity target features deformation.")
 
