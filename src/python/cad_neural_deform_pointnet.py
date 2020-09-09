@@ -141,11 +141,11 @@ skeleton_output_path = os.path.join(os.path.dirname(output_path), os.path.basena
 direct_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_direct.obj")
 
 # Deform skeleton mesh, then apply to original mesh.
-GV2_features_device, _, _ = pointnet(GV_pointnet_input_targs[-1])
+GV2_features_device, _, _ = pointnet(GV2_pointnet_input)
 GV2_features_device = torch.squeeze(GV2_features_device)
 GV1_deformed, _ = func.forward((GV1_device, GV2_features_device))
 GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
-Finalize(V1_copy_skeleton, F1, E1, V2G_targs[-1], GV1_deformed, rigidity, param_id2)
+Finalize(V1_copy_skeleton, F1, E1, V2G1, GV1_deformed, rigidity, param_id2)
 pyDeform.SaveMesh(skeleton_output_path, V1_copy_skeleton, F1)
 
 # Deform original mesh directly, different from paper.
