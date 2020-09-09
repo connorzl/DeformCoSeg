@@ -150,7 +150,7 @@ for it in range(0, niter):
             feature_transform_regularizer(GV2_trans_feat)
 
         # Total loss.
-        loss = loss1_forward + loss1_backward + loss2_forward + \
+        loss += loss1_forward + loss1_backward + loss2_forward + \
             loss1_features_reg + loss2_backward + loss2_features_reg
 
         if it % 100 == 0 or True:
