@@ -1,21 +1,25 @@
-import argparse
-from time import time
-import numpy as np
-import torch
-import pyDeform
-from layers.pointnet import PointNetfeat, feature_transform_regularizer
-from layers.neuralode_fast import NeuralODE
-from layers.maf import MAF
-from layers.reverse_loss_layer import ReverseLossLayer
-from layers.graph_loss2_layer import GraphLoss2Layer, Finalize
-from torch.autograd import Function
-import torch.optim as optim
-from torch import nn
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + 'layers')
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build')))
 
+from torch import nn
+import torch.optim as optim
+from torch.autograd import Function
+
+import torch
+from layers.graph_loss2_layer import GraphLoss2Layer, Finalize
+from layers.reverse_loss_layer import ReverseLossLayer
+from layers.maf import MAF
+from layers.neuralode_fast import NeuralODE
+from layers.pointnet import PointNetfeat, feature_transform_regularizer
+import pyDeform
+
+import numpy as np
+from time import time
+
+import argparse
 
 parser = argparse.ArgumentParser(description='Rigid Deformation.')
 parser.add_argument('--source', default='../data/cad-source.obj')
@@ -129,28 +133,32 @@ for it in range(0, niter):
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
 
-V1_copy = V1.clone()
+V1_copy_skeleton = V1.clone()
+V1_copy_direct = V1.clone() 
+V1_copy_direct_origin = V1_copy_direct.clone()
+
+skeleton_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_skeleton.obj")
+direct_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_direct.obj")
 
 # Deform skeleton mesh, then apply to original mesh.
-GV2_features_device, _, _ = pointnet(GV2_pointnet_input)
+GV2_features_device, _, _ = pointnet(GV_pointnet_input_targs[-1])
 GV2_features_device = torch.squeeze(GV2_features_device)
 GV1_deformed, _ = func.forward((GV1_device, GV2_features_device))
 GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
-#Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
-#pyDeform.SaveMesh(output_path, V1_copy, F1)
+Finalize(V1_copy_skeleton, F1, E1, V2G_targs[-1], GV1_deformed, rigidity, param_id2)
+pyDeform.SaveMesh(skeleton_output_path, V1_copy_skeleton, F1)
 
 # Deform original mesh directly, different from paper.
-pyDeform.NormalizeByTemplate(V1_copy, param_id1.tolist())
-V1_origin = V1_copy.clone()
+pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
 
 func.func = func.func.cpu()
 # Considering extracting features for the original target mesh here.
-V1_copy, _ = func.forward((V1_copy, GV2_features_device.cpu()))
-V1_copy = torch.from_numpy(V1_copy.data.cpu().numpy())
+V1_copy_direct, _ = func.forward((V1_copy_direct, GV2_features_device.cpu()))
+V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
 
 src_to_src = torch.from_numpy(
-    np.array([i for i in range(V1_origin.shape[0])]).astype('int32'))
+    np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
 
-pyDeform.SolveLinear(V1_origin, F1, E1, src_to_src, V1_copy, 1, 1)
-pyDeform.DenormalizeByTemplate(V1_origin, param_id2.tolist())
-pyDeform.SaveMesh(output_path, V1_origin, F1)
+pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
+pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
+pyDeform.SaveMesh(direct_output_path, V1_copy_direct_origin, F1)
