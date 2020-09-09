@@ -55,7 +55,7 @@ optimizer = optim.Adam(func.parameters(), lr=1e-3)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 100
+niter = 1000
 
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
