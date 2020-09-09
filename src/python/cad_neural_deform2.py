@@ -92,11 +92,11 @@ if save_path != '':
 V1_copy = V1.clone()
 
 # Method described in the paper
-#GV1_deformed = func.forward(GV1_device)
-#GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
-#Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
-#pyDeform.SaveMesh(output_path, V1_copy, F1)
-
+GV1_deformed = func.forward(GV1_device)
+GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
+Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
+pyDeform.SaveMesh(output_path, V1_copy, F1)
+"""
 # Different from paper, directly deform the original mesh vertices
 pyDeform.NormalizeByTemplate(V1_copy, param_id1.tolist())
 V1_origin = V1_copy.clone()
@@ -110,3 +110,4 @@ src_to_src = torch.from_numpy(np.array([i for i in range(V1_origin.shape[0])]).a
 pyDeform.SolveLinear(V1_origin, F1, E1, src_to_src, V1_copy, 1, 1)
 pyDeform.DenormalizeByTemplate(V1_origin, param_id2.tolist())
 pyDeform.SaveMesh(output_path, V1_origin, F1)
+"""

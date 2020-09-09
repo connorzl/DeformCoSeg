@@ -79,5 +79,5 @@ class GraphLoss2Layer(nn.Module):
 
 def Finalize(src_V, src_F, src_E, src_to_graph, graph_V, rigidity, param_id):
     pyDeform.NormalizeByTemplate(src_V, param_id.tolist())
-    pyDeform.SolveLinear(src_V, src_F, src_E, src_to_graph, graph_V, rigidity)
+    pyDeform.SolveLinear(src_V, src_F, src_E, src_to_graph, graph_V, rigidity, 1)
     pyDeform.DenormalizeByTemplate(src_V, param_id.tolist())
