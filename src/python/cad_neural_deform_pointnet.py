@@ -129,16 +129,17 @@ for it in range(0, niter):
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
 
-# Deform skeleton mesh.
+V1_copy = V1.clone()
+
+# Deform skeleton mesh, then apply to original mesh.
 GV2_features_device, _, _ = pointnet(GV2_pointnet_input)
 GV2_features_device = torch.squeeze(GV2_features_device)
 GV1_deformed, _ = func.forward((GV1_device, GV2_features_device))
 GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
-
-# Deform original mesh.
-V1_copy = V1.clone()
 #Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
+#pyDeform.SaveMesh(output_path, V1_copy, F1)
 
+# Deform original mesh directly, different from paper.
 pyDeform.NormalizeByTemplate(V1_copy, param_id1.tolist())
 V1_origin = V1_copy.clone()
 

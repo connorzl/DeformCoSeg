@@ -55,7 +55,7 @@ optimizer = optim.Adam(func.parameters(), lr=1e-3)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 1000
+niter = 100
 
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
@@ -89,15 +89,18 @@ for it in range(0, niter):
 if save_path != '':
 	torch.save({'func':func, 'optim':optimizer}, save_path)
 
-GV1_deformed = func.forward(GV1_device)
-GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
 V1_copy = V1.clone()
-#Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
 
+# Method described in the paper
+#GV1_deformed = func.forward(GV1_device)
+#GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
+#Finalize(V1_copy, F1, E1, V2G1, GV1_deformed, 1.0, param_id2)
+#pyDeform.SaveMesh(output_path, V1_copy, F1)
+
+# Different from paper, directly deform the original mesh vertices
 pyDeform.NormalizeByTemplate(V1_copy, param_id1.tolist())
 V1_origin = V1_copy.clone()
 
-#V1_copy = V1_copy.to(device)
 func.func = func.func.cpu()
 V1_copy = func.forward(V1_copy)
 V1_copy = torch.from_numpy(V1_copy.data.cpu().numpy())
