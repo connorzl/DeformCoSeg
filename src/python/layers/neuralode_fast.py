@@ -62,7 +62,7 @@ class ODEFuncPointNet(nn.Module):
         delta_features = torch.zeros_like(features)
 
         # Concatenate target global features vector to each point.
-        features = torch.unsqueeze(y[1], 0)
+        features = torch.unsqueeze(features, 0)
         features = features.repeat((vertices.shape[0], 1))
         net_input = torch.cat((vertices, features), dim=1)
 

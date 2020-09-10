@@ -126,9 +126,9 @@ python ../src/python/rigid_deform.py --source ../data/source.obj --target ../dat
 ```
 python ../src/python/cad_deform2.py --source ../data/cad-source.obj --target ../data/cad-target.obj --output ./cad_output.obj --rigidity 1
 ```
-3. For NeuarlODE-based deformation, try
+3. For NeuralODE-based deformation, try
 ```
-python ../src/python/cad_neural_deform2.py --source ../data/cad-source.obj --target ../data/cad-target.obj --output ./cad_output.obj --save_path ./cad_output.ckpt --rigidity 0.1 --device cpu [cuda if possible for faster optimization]
+python ../src/python/cad_neural_deform2.py --source ../data/cad-source.obj --target ../data/cad-target.obj --output ./cad_output --save_path ./cad_output.ckpt --rigidity 0.1 --device cpu [cuda if possible for faster optimization]
 ```
 4. To generate intermediate steps during deformation with NeuralODE (assuming you have previous script done), try
 ```
