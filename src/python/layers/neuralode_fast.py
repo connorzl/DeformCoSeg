@@ -32,21 +32,19 @@ class ODEFunc(nn.Module):
         #return self.net(yt-0.5)
 
 class ODEFuncPointNet(nn.Module):
-    def __init__(self, k=1027):
+    def __init__(self, k=35):
         super(ODEFuncPointNet, self).__init__()
         nlin = nn.LeakyReLU()
+        m = 50
+        nlin = nn.LeakyReLU()
         self.net = nn.Sequential(
-            nn.Linear(k, 1024),
+            nn.Linear(k, m),
             nlin,
-            nn.Linear(1024, 512),
+            nn.Linear(m, m),
             nlin,
-            nn.Linear(512, 256),
+            nn.Linear(m, m),
             nlin,
-            nn.Linear(256, 128),
-            nlin,
-            nn.Linear(128, 64),
-            nlin,
-            nn.Linear(64, 3)
+            nn.Linear(m, 3),
         )
 
         for m in self.net.modules():
@@ -63,13 +61,11 @@ class ODEFuncPointNet(nn.Module):
 
 
 class NeuralFlowModel(nn.Module):
-    def __init__(self, dim=3, latent_size=1024, device=torch.device('cpu')):
+    def __init__(self, dim=3, latent_size=32, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
-      
-        self.flow_net = ODEFuncPointNet()
+        self.flow_net = ODEFuncPointNet(k=dim+latent_size)
         self.latent_updated = False
         self.device = device
-
 
     def update_latents(self, latent_sequence):
         """
@@ -83,9 +79,6 @@ class NeuralFlowModel(nn.Module):
 
     def latent_at_t(self, t):
         """Helper fn to compute latent at t."""
-        t = t.to(self.device)
-
-        # find the interpolation coefficient between the latents at the two ends of the bin
         t0 = 0
         t1 = 1
         alpha = (t - t0) / (t1 - t0)  # [batch]
@@ -106,6 +99,7 @@ class NeuralFlowModel(nn.Module):
         if not self.latent_updated:
             raise RuntimeError('Latent not updated. '
                                'Use .update_latents() to update the source and target latents.')
+        t = t.to(self.device)
         latent_val = self.latent_at_t(t)
         flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
         return flow
@@ -143,7 +137,7 @@ class NeuralODE():
 
 
 class NeuralFlowDeformer(nn.Module):
-    def __init__(self, dim=3, latent_size=1024, method='dopri5', atol=1e-5, rtol=1e-5, device=torch.device('cpu')):
+    def __init__(self, dim=3, latent_size=32, method='dopri5', atol=1e-5, rtol=1e-5, device=torch.device('cpu')):
         """Initialize. The parameters are the parameters for the Deformation Flow network.
         Args:
           dim: int, physical dimensions. Either 2 for 2d or 3 for 3d.
@@ -159,7 +153,6 @@ class NeuralFlowDeformer(nn.Module):
         self.atol = atol
         self.device = device
         self.net = NeuralFlowModel(dim=dim, latent_size=latent_size, device=device)
-        self.net = self.net.to(device)
 
     @property
     def timing(self):
