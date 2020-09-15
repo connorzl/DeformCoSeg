@@ -12,7 +12,7 @@ import torch
 from layers.graph_loss2_layer import GraphLoss2Layer, Finalize
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.maf import MAF
-from layers.neuralode_fast import NeuralODE
+from layers.neuralode_fast import NeuralFlowDeformer
 from layers.pointnet import PointNetfeat, feature_transform_regularizer
 import pyDeform
 
@@ -63,7 +63,8 @@ param_id2 = graph_loss.param_id2
 reverse_loss = ReverseLossLayer()
 
 # Flow layer.
-func = NeuralODE(device, use_pointnet=True)
+func = NeuralFlowDeformer(device=device)
+func = func.to(device)
 
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
 
@@ -76,7 +77,7 @@ GV2_pointnet_input = GV2_pointnet_input.transpose(2, 1).to(device)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 1000
+niter = 1
 
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
@@ -88,21 +89,13 @@ for it in range(0, niter):
     # Encode both skeleton meshes using PointNet.
     GV1_features_device, _, GV1_trans_feat = pointnet(GV1_pointnet_input)
     GV2_features_device, _, GV2_trans_feat = pointnet(GV2_pointnet_input)
-    GV1_features_device = torch.squeeze(GV1_features_device)
-    GV2_features_device = torch.squeeze(GV2_features_device)
-
+    source_target_latents = torch.cat([GV1_features_device, GV2_features_device], dim=0)
+    print("input_latents:", source_target_latents.device)
+    target_source_latents = torch.cat([GV2_features_device, GV1_features_device], dim=0)
+ 
     # Compute and integrate velocity field for deformation.
-    GV1_deformed, GV2_features_deformed = func.forward(
-        (GV1_device, GV2_features_device))
-    # The target features should stay the same, since they are only used to integrate GV1.
-    if torch.norm(GV2_features_device - GV2_features_deformed) > eps:
-        raise ValueError("Non-identity target features deformation.")
-
-    # Same as above, but in opposite direction.
-    GV2_deformed, GV1_features_deformed = func.inverse(
-        (GV2_device, GV1_features_device))
-    if torch.norm(GV1_features_device - GV1_features_deformed) > eps:
-        raise ValueError("Non-identity target features deformation.")
+    GV1_deformed = func.forward(GV1_device, source_target_latents)
+    GV2_deformed = func.inverse(GV2_device, target_source_latents)
 
     loss1_forward = graph_loss(GV1_deformed, GE1, GV2, GE2, 0)
     loss1_backward = reverse_loss(GV1_deformed, GV2_origin, device)
@@ -128,7 +121,8 @@ for it in range(0, niter):
                  np.sqrt(loss2_backward.item() / GV1.shape[0])))
 
         current_loss = loss.item()
-
+print("done")
+"""
 # Evaluate final result.
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
@@ -162,3 +156,4 @@ src_to_src = torch.from_numpy(
 pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
 pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
 pyDeform.SaveMesh(direct_output_path, V1_copy_direct_origin, F1)
+"""

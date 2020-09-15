@@ -113,6 +113,7 @@ void LinearEstimation(std::vector<Vector3>& V,
 
 void LinearEstimationWithRot(double* V, int* F, double* TV,
 	int num_V, int num_F, double rigidity) {
+	// 3 edges for each face and 2 vertices for each edge
 	std::vector<int> E(num_F * 6);
 	int num_E = 0;
 	for (int i = 0; i < num_F; ++i) {
@@ -121,11 +122,13 @@ void LinearEstimationWithRot(double* V, int* F, double* TV,
 			E[num_E++] = F[i * 3 + (j + 1) % 3];
 		}
 	}
+	// num_E = 3F
 	num_E /= 2;
 	std::vector<std::set<int> > links(num_V);
 	std::vector<Eigen::Matrix3d> rotations(num_V);
 	std::vector<double> scales(num_V);
 
+	// map each vertex to its neighbors
 	for (int i = 0; i < num_E; ++i) {
 		int v1 = E[i * 2];
 		int v2 = E[i * 2 + 1];
@@ -133,20 +136,26 @@ void LinearEstimationWithRot(double* V, int* F, double* TV,
 		links[v2].insert(v1);
 	}
 
+	// compute scale ratio between target and source vertex
+	// compute rotation between target and source vertex	
 	for (int i = 0; i < num_V; ++i) {
 		Eigen::Matrix3d covariance = Eigen::Matrix3d::Zero();
 
+		// current source and target vertex
 		double* current_v = V + i * 3;
 		double* current_tv = TV + i * 3;
 
 		double len_origin = 0, len_current = 0;
+		// loop through neighbors of this vertex
 		for (auto& p : links[i]) {
 			double* next_v = V + p * 3;
 			double* next_tv = TV + p * 3;
 
+			// edge vector for source
 			Eigen::Vector3d d1(next_v[0] - current_v[0],
 				next_v[1] - current_v[1],
 				next_v[2] - current_v[2]);
+			// edge vector for target
 			Eigen::Vector3d d2(next_tv[0] - current_tv[0],
 				next_tv[1] - current_tv[1],
 				next_tv[2] - current_tv[2]);
@@ -165,9 +174,11 @@ void LinearEstimationWithRot(double* V, int* F, double* TV,
 		scales[i] = scale;
 	}
 
+	// LHS is V x V
 	std::unordered_map<long long, FT> trips;
 	
 	int num_entries = num_V;
+	// RHS is V x 3
 	Eigen::MatrixXd B = Eigen::MatrixXd::Zero(num_entries, 3);
 	auto add_entry_A = [&](int x, int y, FT w) {
 		long long key = (long long)x * (long long)num_entries + (long long)y;
@@ -181,15 +192,20 @@ void LinearEstimationWithRot(double* V, int* F, double* TV,
 		B.row(m) += v;
 	};
 
+	// fitting constraints: V' - TV = 0
+	// I * V' = TV
 	for (int i = 0; i < num_V; ++i) {
 		add_entry_A(i, i, 1);
 		add_entry_B(i, Eigen::Vector3d(TV[i * 3],
 			TV[i * 3 + 1], TV[i * 3 + 2]));
 	}
 
+	// rigidity constraints: for each edge ij, reg * ( (V_i' - V_j') - (scale * rot * (V_i - V_j) ) = 0 
+	// reg = rigidity / |e_ij|
 	double regulation = 1.0;
 	for (int i = 0; i < num_E; ++i) {
 		for (int j = 0; j < 2; ++j) {
+			// (2i, 2i + 1) and (2i + 1, 2i)
 			int v0 = E[i * 2 + j];
 			int v1 = E[i * 2 + 1 - j];
 			double* V0 = V + v0 * 3;
