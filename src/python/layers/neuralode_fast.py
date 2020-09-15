@@ -68,8 +68,6 @@ class NeuralFlowModel(nn.Module):
       
         self.flow_net = ODEFuncPointNet()
         self.latent_updated = False
-        self.lat_params = None
-        self.scale = nn.Parameter(torch.ones(1) * 1e-3)
         self.device = device
 
 
