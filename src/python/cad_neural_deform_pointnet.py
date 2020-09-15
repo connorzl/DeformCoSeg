@@ -64,7 +64,7 @@ reverse_loss = ReverseLossLayer()
 
 # Flow layer.
 func = NeuralFlowDeformer(device=device)
-func = func.to(device)
+func.to(device)
 
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
 
@@ -77,51 +77,53 @@ GV2_pointnet_input = GV2_pointnet_input.transpose(2, 1).to(device)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 1
+niter = 100
 
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
-loss_min = 1e30
-eps = 1e-6
 for it in range(0, niter):
     optimizer.zero_grad()
 
     # Encode both skeleton meshes using PointNet.
     GV1_features_device, _, GV1_trans_feat = pointnet(GV1_pointnet_input)
     GV2_features_device, _, GV2_trans_feat = pointnet(GV2_pointnet_input)
+    GV1_features_device = torch.zeros(1, 32).to(device)
+    GV2_features_device = torch.zeros(1, 32).to(device)
     source_target_latents = torch.cat([GV1_features_device, GV2_features_device], dim=0)
-    print("input_latents:", source_target_latents.device)
-    target_source_latents = torch.cat([GV2_features_device, GV1_features_device], dim=0)
- 
+    #target_source_latents = torch.cat([GV2_features_device, GV1_features_device], dim=0)
+
     # Compute and integrate velocity field for deformation.
     GV1_deformed = func.forward(GV1_device, source_target_latents)
-    GV2_deformed = func.inverse(GV2_device, target_source_latents)
-
+    #GV2_deformed = func.inverse(GV2_device, target_source_latents)
     loss1_forward = graph_loss(GV1_deformed, GE1, GV2, GE2, 0)
     loss1_backward = reverse_loss(GV1_deformed, GV2_origin, device)
     loss1_features_reg = FEATURES_REG_LOSS_WEIGHT * \
         feature_transform_regularizer(GV1_trans_feat)
 
-    loss2_forward = graph_loss(GV1, GE1, GV2_deformed, GE2, 1)
-    loss2_backward = reverse_loss(GV2_deformed, GV1_origin, device)
+    #loss2_forward = graph_loss(GV1, GE1, GV2_deformed, GE2, 1)
+    #loss2_backward = reverse_loss(GV2_deformed, GV1_origin, device)
     loss2_features_reg = FEATURES_REG_LOSS_WEIGHT * \
         feature_transform_regularizer(GV2_trans_feat)
 
-    loss = loss1_forward + loss1_backward + loss2_forward + \
-        loss1_features_reg + loss2_backward + loss2_features_reg
+    loss = loss1_forward + loss1_backward + loss1_features_reg + loss2_features_reg
+    #loss = loss1_forward + loss1_backward + loss2_forward + \
+    #    loss1_features_reg + loss2_backward + loss2_features_reg
 
     loss.backward()
     optimizer.step()
 
     if it % 100 == 0 or True:
+        print('iter=%d, loss1_forward=%.6f loss1_backward=%.6f'
+              % (it, np.sqrt(loss1_forward.item() / GV1.shape[0]),
+                 np.sqrt(loss1_backward.item() / GV2.shape[0])))
+        """
         print('iter=%d, loss1_forward=%.6f loss1_backward=%.6f loss2_forward=%.6f loss2_backward=%.6f'
               % (it, np.sqrt(loss1_forward.item() / GV1.shape[0]),
                  np.sqrt(loss1_backward.item() / GV2.shape[0]),
                  np.sqrt(loss2_forward.item() / GV2.shape[0]),
                  np.sqrt(loss2_backward.item() / GV1.shape[0])))
-
+        """
         current_loss = loss.item()
-print("done")
 """
 # Evaluate final result.
 if save_path != '':
