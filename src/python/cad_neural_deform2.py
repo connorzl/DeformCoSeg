@@ -93,14 +93,16 @@ V1_copy_skeleton = V1.clone()
 V1_copy_direct = V1.clone() 
 V1_copy_direct_origin = V1_copy_direct.clone()
 
-skeleton_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_skeleton.obj")
+#skeleton_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_skeleton.obj")
 direct_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_direct.obj")
+flow_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_flow.txt")
+flow_final_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_flow_final.txt")
 
 # Deform skeleton mesh, then apply to original mesh.
-GV1_deformed = func.forward(GV1_device)
-GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
-Finalize(V1_copy_skeleton, F1, E1, V2G1, GV1_deformed, rigidity, param_id2)
-pyDeform.SaveMesh(skeleton_output_path, V1_copy_skeleton, F1)
+#GV1_deformed = func.forward(GV1_device)
+#GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
+#Finalize(V1_copy_skeleton, F1, E1, V2G1, GV1_deformed, rigidity, param_id2)
+#pyDeform.SaveMesh(skeleton_output_path, V1_copy_skeleton, F1)
 
 # Deform original mesh directly, different from paper.
 pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
@@ -108,11 +110,23 @@ pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
 func.func = func.func.cpu()
 # Considering extracting features for the original target mesh here.
 V1_copy_direct = func.forward(V1_copy_direct)
-V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
+flow = V1_copy_direct - V1
+flow = torch.cat((V1, flow), dim=1)
+flow_file = open(flow_path, 'w')
+np.savetxt(flow_file, flow.detach().numpy())
+flow_file.close()
 
+V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
 src_to_src = torch.from_numpy(
     np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
 
 pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
 pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
+
+flow_final = V1_copy_direct_origin - V1
+flow_final = torch.cat((V1, flow_final), dim=1)
+flow_file = open(flow_final_path, 'w')
+np.savetxt(flow_file, flow_final.detach().numpy())
+flow_file.close()
+
 pyDeform.SaveMesh(direct_output_path, V1_copy_direct_origin, F1)
