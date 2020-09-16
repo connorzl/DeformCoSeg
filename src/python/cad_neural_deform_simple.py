@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.autograd import Function
 
 import torch
-from layers.graph_loss2_layer import GraphLoss2LayerSimple, Finalize
+from layers.graph_loss2_layer import GraphLoss2Layer, Finalize
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.maf import MAF
 from layers.neuralode_fast import NeuralODE
@@ -17,7 +17,6 @@ import pyDeform
 
 import numpy as np
 from time import time
-import trimesh
 
 import argparse
 
@@ -38,18 +37,16 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
-def load_mesh(mesh_path):
-    mesh = trimesh.load(source_path)
-    verts = torch.from_numpy(mesh.vertices.astype(np.float32))
-    edges = torch.from_numpy(mesh.edges.astype(np.int32))
-    faces = torch.from_numpy(mesh.faces.astype(np.int32))
-    return verts, edges, faces
+# With MeshODE pre-processing
+V1, F1, E1 = pyDeform.LoadCadMesh(source_path)
+V2, F2, E2 = pyDeform.LoadCadMesh(reference_path)
 
-source_verts, source_edges, source_faces = load_mesh(source_path)
-targ_verts, targ_edges, targ_faces = load_mesh(reference_path)
+GV1 = V1.clone()
+GE1 = E1.clone()
+GV2 = V2.clone()
+GE2 = E2.clone()
 
-graph_loss = GraphLoss2LayerSimple(source_verts, source_faces, source_edges,
-                                   targ_verts, targ_faces, targ_edges, rigidity, device)
+graph_loss = GraphLoss2Layer(V1,F1,GV1,GE1,V2,F2,GV2,GE2,rigidity,device)
 param_id1 = graph_loss.param_id1
 param_id2 = graph_loss.param_id2
 
@@ -58,75 +55,56 @@ reverse_loss = ReverseLossLayer()
 func = NeuralODE(device)
 
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
-source_verts_origin = source_verts.clone()
-targ_verts_origin = targ_verts.clone()
+GV1_origin = GV1.clone()
+GV2_origin = GV2.clone()
 
 niter = 1000
 
-source_verts_device = source_verts.to(device)
-targ_verts_device = targ_verts.to(device)
+GV1_device = GV1.to(device)
+GV2_device = GV2.to(device)
+loss_min = 1e30
 for it in range(0, niter):
-    optimizer.zero_grad()
+	optimizer.zero_grad()
 
-    source_verts_deformed = func.forward(source_verts_device)
-    targ_verts_deformed = func.inverse(targ_verts_device)
-    
-    loss1_forward = graph_loss(source_verts_deformed, source_edges, targ_verts, targ_edges, 0)
-    loss1_backward = reverse_loss(source_verts_deformed, targ_verts_origin, device)
+	GV1_deformed = func.forward(GV1_device)
+	GV2_deformed = func.inverse(GV2_device)
 
-    #loss2_forward = graph_loss(source_verts, source_edges, targ_verts_deformed, targ_edges, 1)
-    #loss2_backward = reverse_loss(targ_verts_deformed, source_verts_origin, device)
+	loss1_forward = graph_loss(GV1_deformed, GE1, GV2, GE2, 0)
+	loss1_backward = reverse_loss(GV1_deformed, GV2_origin, device)
 
-    loss = loss1_forward + loss1_backward #+ loss2_forward + loss2_backward
+	loss2_forward = graph_loss(GV1, GE1, GV2_deformed, GE2, 1)
+	loss2_backward = reverse_loss(GV2_deformed, GV1_origin, device)
 
-    loss.backward()
-    optimizer.step()
+	loss = loss1_forward + loss1_backward + loss2_forward + loss2_backward
 
-    if it % 100 == 0 or True:
-        """
-        print('iter=%d, loss1_forward=%.6f loss1_backward=%.6f loss2_forward=%.6f loss2_backward=%.6f'
-            %(it, np.sqrt(loss1_forward.item() / source_verts.shape[0]),
-                np.sqrt(loss1_backward.item() / targ_verts.shape[0]),
-                np.sqrt(loss2_forward.item() / targ_verts.shape[0]),
-                np.sqrt(loss2_backward.item() / source_verts.shape[0])))
-        """
-        print(it)
-        current_loss = loss.item()
+	loss.backward()
+	optimizer.step()
+
+	if it % 100 == 0 or True:
+		print('iter=%d, loss1_forward=%.6f loss1_backward=%.6f loss2_forward=%.6f loss2_backward=%.6f'
+			%(it, np.sqrt(loss1_forward.item() / GV1.shape[0]),
+				np.sqrt(loss1_backward.item() / GV2.shape[0]),
+				np.sqrt(loss2_forward.item() / GV2.shape[0]),
+				np.sqrt(loss2_backward.item() / GV1.shape[0])))
+
+		current_loss = loss.item()
 
 if save_path != '':
-    torch.save({'func':func, 'optim':optimizer}, save_path)
+	torch.save({'func':func, 'optim':optimizer}, save_path)
 
-flow_path = output_path[:-4] + "_flow.txt"
-flow_final_path = output_path[:-4] + "_flow_final.txt"
+V1_copy_direct = V1.clone() 
+V1_copy_direct_origin = V1_copy_direct.clone()
 
 # Deform original mesh directly, different from paper.
-source_verts_copy = source_verts.clone() 
-source_verts_copy_origin = source_verts_copy.clone()
-pyDeform.NormalizeByTemplate(source_verts_copy, param_id1.tolist())
+pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
 
 func.func = func.func.cpu()
-source_verts_copy = func.forward(source_verts_copy)
-
-# Save intermediate flow from network.
-flow = source_verts_copy - source_verts
-flow = torch.cat((source_verts, flow), dim=1)
-flow_file = open(flow_path, 'w')
-np.savetxt(flow_file, flow.detach().numpy())
-flow_file.close()
-
-# Solve linear system for final flow.
-source_verts_copy = torch.from_numpy(source_verts_copy.data.cpu().numpy())
+# Considering extracting features for the original target mesh here.
+V1_copy_direct = func.forward(V1_copy_direct)
+V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
 src_to_src = torch.from_numpy(
-    np.array([i for i in range(source_verts_copy_origin.shape[0])]).astype('int32'))
-pyDeform.SolveLinear(source_verts_copy_origin, source_faces, source_edges, src_to_src, source_verts_copy, 1, 1)
-pyDeform.DenormalizeByTemplate(source_verts_copy_origin, param_id2.tolist())
+    np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
 
-# Save final flow.
-flow_final = source_verts_copy_origin - source_verts
-flow_final = torch.cat((source_verts, flow_final), dim=1)
-flow_file = open(flow_final_path, 'w')
-np.savetxt(flow_file, flow_final.detach().numpy())
-flow_file.close()
-
-# Save output mesh.
-pyDeform.SaveMesh(output_path, source_verts_copy_origin, source_faces)
+pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
+pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
+pyDeform.SaveMesh(output_path, V1_copy_direct_origin, F1)
