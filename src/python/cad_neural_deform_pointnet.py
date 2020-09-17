@@ -18,6 +18,7 @@ import pyDeform
 
 import numpy as np
 from time import time
+import trimesh
 
 import argparse
 
@@ -40,14 +41,19 @@ device = torch.device(args.device)
 
 FEATURES_REG_LOSS_WEIGHT = 0.001
 
-# Vertices has shape [V, 3], each element is (v_x, v_y, v_z)
-# Faces has shape [F, 3], each element is (i, j, k)
-# Edges has shape [E, 2], each element is (i, j)
-# V2G1 maps each vertex to the voxel number that it belongs to, has shape [F, 1]
-# Skeleton mesh vertices has shape [GV, 3], each skeleton vertex is the average of vertices in its voxel.
-# Skeleton mesh edges has shape [GE, 2]
-V1, F1, E1, V2G1, GV1, GE1 = pyDeform.LoadCadMesh(source_path)
-V2, F2, E2, V2G2, GV2, GE2 = pyDeform.LoadCadMesh(reference_path)
+def load_mesh(mesh_path):
+	mesh = trimesh.load(mesh_path, process=False)
+	verts = torch.from_numpy(mesh.vertices.astype(np.float32))
+	edges = torch.from_numpy(mesh.edges.astype(np.int32))
+	faces = torch.from_numpy(mesh.faces.astype(np.int32))
+	return verts, faces, edges
+
+V1, F1, E1 = load_mesh(source_path)
+V2, F2, E2 = load_mesh(reference_path)
+GV1 = V1.clone()
+GE1 = E1.clone()
+GV2 = V2.clone()
+GE2 = E2.clone()
 
 # PointNet layer.
 pointnet = PointNetfeat(global_feat=True, feature_transform=True)
@@ -129,20 +135,8 @@ for it in range(0, niter):
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
 
-V1_copy_skeleton = V1.clone()
 V1_copy_direct = V1.clone() 
 V1_copy_direct_origin = V1_copy_direct.clone()
-
-skeleton_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_skeleton.obj")
-direct_output_path = os.path.join(os.path.dirname(output_path), os.path.basename(output_path) + "_direct.obj")
-
-# Deform skeleton mesh, then apply to original mesh.
-GV2_features_device, _, _ = pointnet(GV2_pointnet_input)
-GV2_features_device = torch.squeeze(GV2_features_device)
-GV1_deformed, _ = func.forward((GV1_device, GV2_features_device))
-GV1_deformed = torch.from_numpy(GV1_deformed.data.cpu().numpy())
-Finalize(V1_copy_skeleton, F1, E1, V2G1, GV1_deformed, rigidity, param_id2)
-pyDeform.SaveMesh(skeleton_output_path, V1_copy_skeleton, F1)
 
 # Deform original mesh directly, different from paper.
 pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
@@ -157,5 +151,5 @@ src_to_src = torch.from_numpy(
 
 pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
 pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
-pyDeform.SaveMesh(direct_output_path, V1_copy_direct_origin, F1)
+pyDeform.SaveMesh(output_path, V1_copy_direct_origin, F1)
 """

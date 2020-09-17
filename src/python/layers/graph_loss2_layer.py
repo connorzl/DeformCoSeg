@@ -18,10 +18,8 @@ class GraphLoss2Function(Function):
 
         lossD1 = pyDeform.DistanceFieldLoss_forward(test_V1, int(pid2)) * 0.5
         lossR1 = pyDeform.GraphEdgeLoss_forward(test_V1, E1, int(pid1)) * 0.5
-
         variables = [V1, E1, rigidity2, param_id1, param_id2]
         ctx.save_for_backward(*variables)
-
         return (lossD1.sum() + lossR1.sum() * rigidity2.tolist()).to(device)
 
     @staticmethod
@@ -75,6 +73,7 @@ class GraphLoss2Layer(nn.Module):
 
         return GraphLoss2Function.apply(V2, E2,
                                         self.rigidity2, self.param_id2, self.param_id1)
+
 
 class GraphLoss2LayerMulti(nn.Module):
     def __init__(self, V1, F1, graph_V1, graph_E1,

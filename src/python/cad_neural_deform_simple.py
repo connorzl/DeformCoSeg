@@ -15,6 +15,8 @@ from layers.maf import MAF
 from layers.neuralode_fast import NeuralODE
 import pyDeform
 
+import trimesh
+
 import numpy as np
 from time import time
 
@@ -37,9 +39,19 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
+def load_mesh(mesh_path):
+	mesh = trimesh.load(mesh_path, process=False)
+	verts = torch.from_numpy(mesh.vertices.astype(np.float32))
+	edges = torch.from_numpy(mesh.edges.astype(np.int32))
+	faces = torch.from_numpy(mesh.faces.astype(np.int32))
+	return verts, faces, edges
 
-V1, F1, E1, V2G1, GV1, GE1 = pyDeform.LoadCadMesh(source_path)
-V2, F2, E2, V2G2, GV2, GE2 = pyDeform.LoadCadMesh(reference_path)
+V1, F1, E1 = load_mesh(source_path)
+V2, F2, E2 = load_mesh(reference_path)
+GV1 = V1.clone()
+GE1 = E1.clone()
+GV2 = V2.clone()
+GE2 = E2.clone()
 
 graph_loss = GraphLoss2Layer(V1,F1,GV1,GE1,V2,F2,GV2,GE2,rigidity,device)
 param_id1 = graph_loss.param_id1
@@ -90,32 +102,16 @@ if save_path != '':
 V1_copy_direct = V1.clone() 
 V1_copy_direct_origin = V1_copy_direct.clone()
 
-flow_path = output_path[:-4] + "_flow.txt")
-flow_final_path = output_path[:-4] + "_flow_final.txt")
-
 # Deform original mesh directly, different from paper.
 pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
 
 func.func = func.func.cpu()
 # Considering extracting features for the original target mesh here.
 V1_copy_direct = func.forward(V1_copy_direct)
-flow = V1_copy_direct - V1
-flow = torch.cat((V1, flow), dim=1)
-flow_file = open(flow_path, 'w')
-np.savetxt(flow_file, flow.detach().numpy())
-flow_file.close()
-
 V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
 src_to_src = torch.from_numpy(
     np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
 
 pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
 pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
-
-flow_final = V1_copy_direct_origin - V1
-flow_final = torch.cat((V1, flow_final), dim=1)
-flow_file = open(flow_final_path, 'w')
-np.savetxt(flow_file, flow_final.detach().numpy())
-flow_file.close()
-
 pyDeform.SaveMesh(output_path, V1_copy_direct_origin, F1)
