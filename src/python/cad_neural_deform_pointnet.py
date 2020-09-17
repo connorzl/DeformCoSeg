@@ -40,6 +40,7 @@ save_path = args.save_path
 device = torch.device(args.device)
 
 FEATURES_REG_LOSS_WEIGHT = 0.001
+
 def load_mesh(mesh_path):
 	mesh = trimesh.load(mesh_path, process=False)
 	verts = torch.from_numpy(mesh.vertices.astype(np.float32))
