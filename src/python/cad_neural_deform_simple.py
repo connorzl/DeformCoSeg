@@ -15,6 +15,8 @@ from layers.maf import MAF
 from layers.neuralode_fast import NeuralODE
 import pyDeform
 
+import trimesh
+
 import numpy as np
 from time import time
 
@@ -37,10 +39,15 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
-# With MeshODE pre-processing
-V1, F1, E1 = pyDeform.LoadCadMesh(source_path)
-V2, F2, E2 = pyDeform.LoadCadMesh(reference_path)
+def load_mesh(mesh_path):
+	mesh = trimesh.load(mesh_path, process=False)
+	verts = torch.from_numpy(mesh.vertices.astype(np.float32))
+	edges = torch.from_numpy(mesh.edges.astype(np.int32))
+	faces = torch.from_numpy(mesh.faces.astype(np.int32))
+	return verts, faces, edges
 
+V1, F1, E1 = load_mesh(source_path)
+V2, F2, E2 = load_mesh(reference_path)
 GV1 = V1.clone()
 GE1 = E1.clone()
 GV2 = V2.clone()

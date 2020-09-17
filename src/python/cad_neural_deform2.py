@@ -38,13 +38,8 @@ save_path = args.save_path
 device = torch.device(args.device)
 
 
-V1, F1, E1 = pyDeform.LoadCadMesh(source_path)
-V2, F2, E2 = pyDeform.LoadCadMesh(reference_path)
-
-GV1 = V1.clone()
-GE1 = E1.clone()
-GV2 = V2.clone()
-GE2 = E2.clone()
+V1, F1, E1, V2G1, GV1, GE1 = pyDeform.LoadCadMesh(source_path)
+V2, F2, E2, V2G2, GV2, GE2 = pyDeform.LoadCadMesh(reference_path)
 
 graph_loss = GraphLoss2Layer(V1,F1,GV1,GE1,V2,F2,GV2,GE2,rigidity,device)
 param_id1 = graph_loss.param_id1

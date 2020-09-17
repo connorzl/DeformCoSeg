@@ -1,4 +1,5 @@
 #include "mesh_tensor.h"
+#include "delaunay.h"
 
 #include <subdivision.h>
 
@@ -104,29 +105,12 @@ std::vector<torch::Tensor> LoadCadMesh(
 
 	Mesh cad;
 	cad.ReadOBJ(filename);
-	cad.RemoveDegenerated();
-	cad.MergeDuplex();
-
-	Subdivision sub;
-	sub.Subdivide(cad, 2e-2);
-
-	sub.ComputeGeometryNeighbors(1.5e-2);
-	sub.ComputeRepresentativeGraph(1e-2);
-
-	auto& subdivide_mesh = sub.GetMesh();
-	auto& neighbors = sub.Neighbors();
-	auto& references = sub.Vertex2Graph();
-	auto& graph_vertices = sub.GraphV();
-	auto& graph_edges = sub.GraphE();
 
 	torch::Tensor tensorV;
 	torch::Tensor tensorF;
 	torch::Tensor tensorE;
-	torch::Tensor tensorSrc2Graph;
-	torch::Tensor tensorGraphV;
-	torch::Tensor tensorGraphE;
 
-	CopyMeshToTensor(subdivide_mesh, &tensorV, &tensorF, 0);	
+	CopyMeshToTensor(cad, &tensorV, &tensorF, 0);	
 	auto int_options = torch::TensorOptions().dtype(torch::kInt32);
 #ifndef USE_DOUBLE
 	typedef float T;
@@ -136,46 +120,31 @@ std::vector<torch::Tensor> LoadCadMesh(
 	auto float_options = torch::TensorOptions().dtype(torch::kFloat64);
 #endif
 
+	std::set<std::pair<int, int> > neighbors;
+	auto& faces = cad.GetF();
+	for (int i = 0; i < faces.size(); ++i) {
+		for (int j = 0; j < 3; ++j) {
+			int v1 = faces[i][j];
+			int v2 = faces[i][(j + 1) % 3];
+			if (v1 > v2)
+				std::swap(v1, v2);
+			if (v1 == v2) {
+				throw std::invalid_argument( "Face edge contains same vertices.");
+			}
+			neighbors.insert(std::make_pair(v1, v2));
+		}
+	}
 	tensorE = torch::full({(long long)neighbors.size(), 2}, 0, int_options);
-	tensorSrc2Graph = torch::full({(long long)references.size(), 1},
-		0, int_options);
-	tensorGraphV = torch::full({(long long)graph_vertices.size(), 3},
-		0, float_options);
-	tensorGraphE = torch::full({(long long)graph_edges.size(), 2},
-		0, int_options);
-
 	auto dataE = static_cast<int*>(tensorE.storage().data());
-	auto dataSrc2Graph = static_cast<int*>(tensorSrc2Graph.storage().data());
-	auto dataGraphV = static_cast<T*>(tensorGraphV.storage().data());
-	auto dataGraphE = static_cast<int*>(tensorGraphE.storage().data());
-
 	int top = 0;
 	for (auto& n : neighbors) {
 		dataE[top] = n.first;
 		dataE[top + 1] = n.second;
 		top += 2;
 	}
-
-	for (int i = 0; i < references.size(); ++i) {
-		dataSrc2Graph[i] = references[i];
-	}
-
-	for (int i = 0; i < graph_vertices.size(); ++i) {
-		for (int j = 0; j < 3; ++j) {
-			dataGraphV[i * 3 + j] = graph_vertices[i][j];
-		}
-	}
-
-	top = 0;
-	for (auto& n : graph_edges) {
-		dataGraphE[top] = n.first;
-		dataGraphE[top + 1] = n.second;
-		top += 2;
-	}
-
-	return {tensorV, tensorF, tensorE, tensorSrc2Graph,
-		tensorGraphV, tensorGraphE};
+	return {tensorV, tensorF, tensorE};
 }
+
 
 void SaveMesh(const char* filename,
 	const torch::Tensor& tensorV,

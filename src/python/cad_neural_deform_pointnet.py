@@ -18,6 +18,7 @@ import pyDeform
 
 import numpy as np
 from time import time
+import trimesh
 
 import argparse
 
@@ -39,15 +40,19 @@ save_path = args.save_path
 device = torch.device(args.device)
 
 FEATURES_REG_LOSS_WEIGHT = 0.001
+def load_mesh(mesh_path):
+	mesh = trimesh.load(mesh_path, process=False)
+	verts = torch.from_numpy(mesh.vertices.astype(np.float32))
+	edges = torch.from_numpy(mesh.edges.astype(np.int32))
+	faces = torch.from_numpy(mesh.faces.astype(np.int32))
+	return verts, faces, edges
 
-# Vertices has shape [V, 3], each element is (v_x, v_y, v_z)
-# Faces has shape [F, 3], each element is (i, j, k)
-# Edges has shape [E, 2], each element is (i, j)
-# V2G1 maps each vertex to the voxel number that it belongs to, has shape [F, 1]
-# Skeleton mesh vertices has shape [GV, 3], each skeleton vertex is the average of vertices in its voxel.
-# Skeleton mesh edges has shape [GE, 2]
-V1, F1, E1, V2G1, GV1, GE1 = pyDeform.LoadCadMesh(source_path)
-V2, F2, E2, V2G2, GV2, GE2 = pyDeform.LoadCadMesh(reference_path)
+V1, F1, E1 = load_mesh(source_path)
+V2, F2, E2 = load_mesh(reference_path)
+GV1 = V1.clone()
+GE1 = E1.clone()
+GV2 = V2.clone()
+GE2 = E2.clone()
 
 # PointNet layer.
 pointnet = PointNetfeat(global_feat=True, feature_transform=True)
