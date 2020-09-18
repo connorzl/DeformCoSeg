@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torchdiffeq import odeint
+from torchdiffeq import odeint_adjoint
 
 import numpy as np
 
@@ -126,14 +126,14 @@ class NeuralODE():
         return self.func.parameters()
 
     def forward(self, u):
-        return odeint(self.func, u, self.timing, method="rk4", rtol=1e-4, atol=1e-4)[1]
+        return odeint_adjoint(self.func, u, self.timing, method="rk4", rtol=1e-4, atol=1e-4)[1]
 
     def inverse(self, u):
-        return odeint(self.func, u, self.timing_inv, method="rk4", rtol=1e-4, atol=1e-4)[1]
+        return odeint_adjoint(self.func, u, self.timing_inv, method="rk4", rtol=1e-4, atol=1e-4)[1]
 
     def integrate(self, u, t1, t2, device):
         new_time = torch.from_numpy(np.array([t1,t2]).astype('float32')).to(device)
-        return odeint(self.func, u, new_time, method="rk4", rtol=1e-4, atol=1e-4)[1]
+        return odeint_adjoint(self.func, u, new_time, method="rk4", rtol=1e-4, atol=1e-4)[1]
 
 
 class NeuralFlowDeformer(nn.Module):
@@ -146,7 +146,7 @@ class NeuralFlowDeformer(nn.Module):
         """
         super(NeuralFlowDeformer, self).__init__()
         self.method = method
-        self.odeint = odeint
+        self.odeint = odeint_adjoint
         self.__timing = torch.from_numpy(np.array([0., 1.]).astype('float32'))
         self.__timing_inv = torch.from_numpy(np.array([1, 0]).astype('float32'))
         self.rtol = rtol
@@ -192,6 +192,6 @@ class NeuralFlowDeformer(nn.Module):
 
     def inverse(self, points, latent_sequence):
         self.net.update_latents(latent_sequence)
-        points_transformed = odeint(
+        points_transformed = self.odeint(
             self.net, points, self.timing_inv, method=self.method, rtol=self.rtol, atol=self.atol)
         return points_transformed[-1]
