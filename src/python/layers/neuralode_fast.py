@@ -32,7 +32,7 @@ class ODEFunc(nn.Module):
         #return self.net(yt-0.5)
 
 class ODEFuncPointNet(nn.Module):
-    def __init__(self, k=35):
+    def __init__(self, k=1):
         super(ODEFuncPointNet, self).__init__()
         nlin = nn.LeakyReLU()
         m = 50
@@ -61,7 +61,7 @@ class ODEFuncPointNet(nn.Module):
 
 
 class NeuralFlowModel(nn.Module):
-    def __init__(self, dim=3, latent_size=32, device=torch.device('cpu')):
+    def __init__(self, dim=3, latent_size=1, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
         self.flow_net = ODEFuncPointNet(k=dim+latent_size)
         self.latent_updated = False
@@ -137,7 +137,7 @@ class NeuralODE():
 
 
 class NeuralFlowDeformer(nn.Module):
-    def __init__(self, dim=3, latent_size=32, method='dopri5', atol=1e-5, rtol=1e-5, device=torch.device('cpu')):
+    def __init__(self, dim=3, latent_size=1, method='dopri5', atol=1e-5, rtol=1e-5, device=torch.device('cpu')):
         """Initialize. The parameters are the parameters for the Deformation Flow network.
         Args:
           dim: int, physical dimensions. Either 2 for 2d or 3 for 3d.
@@ -147,32 +147,14 @@ class NeuralFlowDeformer(nn.Module):
         super(NeuralFlowDeformer, self).__init__()
         self.method = method
         self.odeint = odeint
-        self.__timing = torch.from_numpy(np.array([0., 1.]).astype('float32'))
-        self.__timing_inv = torch.from_numpy(np.array([1, 0]).astype('float32'))
+        self.timing = torch.from_numpy(np.array([0., 1.]).astype('float32'))
+        self.timing = self.timing.to(device)
+        self.timing_inv = torch.from_numpy(np.array([1, 0]).astype('float32'))
+        self.timing_inv = self.timing_inv.to(device)
         self.rtol = rtol
         self.atol = atol
         self.device = device
         self.net = NeuralFlowModel(dim=dim, latent_size=latent_size, device=device)
-
-    @property
-    def timing(self):
-        return self.__timing
-
-    @timing.setter
-    def timing(self, timing):
-        assert(isinstance(timing, torch.Tensor))
-        assert(timing.ndim == 1)
-        self.__timing = timing
-
-    @property
-    def timing_inv(self):
-        return self.__timing_inv
-
-    @timing_inv.setter
-    def timing_inv(self, timing_inv):
-        assert(isinstance(timing_inv, torch.Tensor))
-        assert(timing_inv.ndim == 1)
-        self.__timing_inv = timing_inv
 
     def forward(self, points, latent_sequence):
         """Forward transformation (source -> latent_path -> target).

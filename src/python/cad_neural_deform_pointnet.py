@@ -55,6 +55,9 @@ GE1 = E1.clone()
 GV2 = V2.clone()
 GE2 = E2.clone()
 
+print("Source num vertices:", V1.shape)
+print("Target num vertices:", V2.shape)
+
 # PointNet layer.
 pointnet = PointNetfeat(global_feat=True, feature_transform=True)
 pointnet = pointnet.to(device)
@@ -69,7 +72,7 @@ param_id2 = graph_loss.param_id2
 reverse_loss = ReverseLossLayer()
 
 # Flow layer.
-func = NeuralFlowDeformer(device=device)
+func = NeuralFlowDeformer(dim=3, latent_size=1024, device=device)
 func.to(device)
 
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
@@ -83,7 +86,7 @@ GV2_pointnet_input = GV2_pointnet_input.transpose(2, 1).to(device)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 100
+niter = 5
 
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
@@ -93,8 +96,6 @@ for it in range(0, niter):
     # Encode both skeleton meshes using PointNet.
     GV1_features_device, _, GV1_trans_feat = pointnet(GV1_pointnet_input)
     GV2_features_device, _, GV2_trans_feat = pointnet(GV2_pointnet_input)
-    GV1_features_device = torch.zeros(1, 32).to(device)
-    GV2_features_device = torch.zeros(1, 32).to(device)
     source_target_latents = torch.cat([GV1_features_device, GV2_features_device], dim=0)
     #target_source_latents = torch.cat([GV2_features_device, GV1_features_device], dim=0)
 
@@ -130,7 +131,7 @@ for it in range(0, niter):
                  np.sqrt(loss2_backward.item() / GV1.shape[0])))
         """
         current_loss = loss.item()
-"""
+
 # Evaluate final result.
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
@@ -141,10 +142,13 @@ V1_copy_direct_origin = V1_copy_direct.clone()
 # Deform original mesh directly, different from paper.
 pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
 
-func.func = func.func.cpu()
-# Considering extracting features for the original target mesh here.
-V1_copy_direct, _ = func.forward((V1_copy_direct, GV2_features_device.cpu()))
-V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
+GV1_features_device, _, _ = pointnet(GV1_pointnet_input)
+GV2_features_device, _, _ = pointnet(GV2_pointnet_input)
+source_target_latents = torch.cat([GV1_features_device, GV2_features_device], dim=0)
+
+V1_copy_direct = V1_copy_direct.to(device)
+V1_copy_direct = func.forward(V1_copy_direct, source_target_latents)
+V1_copy_direct = torch.from_numpy(V1_copy_direct.detach().cpu().numpy())
 
 src_to_src = torch.from_numpy(
     np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
@@ -152,4 +156,4 @@ src_to_src = torch.from_numpy(
 pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
 pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
 pyDeform.SaveMesh(output_path, V1_copy_direct_origin, F1)
-"""
+
