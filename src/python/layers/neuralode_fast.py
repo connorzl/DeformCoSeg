@@ -63,9 +63,10 @@ class ODEFuncPointNet(nn.Module):
 class NeuralFlowModel(nn.Module):
     def __init__(self, dim=3, latent_size=1, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
-        self.flow_net = ODEFuncPointNet(k=dim+latent_size)
-        self.latent_updated = False
         self.device = device
+        self.flow_net = ODEFuncPointNet(k=dim+latent_size)
+        self.flow_net = self.flow_net.to(device)
+        self.latent_updated = False
 
     def update_latents(self, latent_sequence):
         """
@@ -99,7 +100,6 @@ class NeuralFlowModel(nn.Module):
         if not self.latent_updated:
             raise RuntimeError('Latent not updated. '
                                'Use .update_latents() to update the source and target latents.')
-        t = t.to(self.device)
         latent_val = self.latent_at_t(t)
         flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
         return flow
@@ -146,7 +146,7 @@ class NeuralFlowDeformer(nn.Module):
         """
         super(NeuralFlowDeformer, self).__init__()
         self.method = method
-        self.odeint = odeint
+        self.odeint = odeint_adjoint
         self.timing = torch.from_numpy(np.array([0., 1.]).astype('float32'))
         self.timing = self.timing.to(device)
         self.timing_inv = torch.from_numpy(np.array([1, 0]).astype('float32'))
@@ -154,7 +154,8 @@ class NeuralFlowDeformer(nn.Module):
         self.rtol = rtol
         self.atol = atol
         self.device = device
-        self.net = NeuralFlowModel(dim=dim, latent_size=latent_size, device=device)
+        self.net = NeuralFlowModel(dim=dim, latent_size=latent_size, device=self.device)
+        self.net = self.net.to(device)
 
     def forward(self, points, latent_sequence):
         """Forward transformation (source -> latent_path -> target).

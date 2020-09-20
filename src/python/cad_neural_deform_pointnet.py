@@ -86,7 +86,7 @@ GV2_pointnet_input = GV2_pointnet_input.transpose(2, 1).to(device)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 5
+niter = 1000
 
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
@@ -148,8 +148,9 @@ source_target_latents = torch.cat([GV1_features_device, GV2_features_device], di
 
 V1_copy_direct = V1_copy_direct.to(device)
 V1_copy_direct = func.forward(V1_copy_direct, source_target_latents)
-V1_copy_direct = torch.from_numpy(V1_copy_direct.detach().cpu().numpy())
 
+# Move to CPU, initialize references mapping.
+V1_copy_direct = torch.from_numpy(V1_copy_direct.detach().cpu().numpy())
 src_to_src = torch.from_numpy(
     np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
 
