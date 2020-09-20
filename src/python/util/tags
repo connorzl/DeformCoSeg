@@ -1,0 +1,6 @@
+!_TAG_FILE_SORTED	2	/0=unsorted, 1=sorted, 2=foldcase/
+binary_tree_pooling	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def binary_tree_pooling(batch_data, k=2, num_points=None):$/;"	f	language:Python
+fps	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def fps(x, num_points, idx=None):$/;"	f	language:Python
+is_power2	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def is_power2(num):$/;"	f	language:Python
+kdtree_index_pc	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def kdtree_index_pc(batch_data):$/;"	f	language:Python
+sample_faces	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def sample_faces(vertices, faces, n_samples=10**4):$/;"	f	language:Python
