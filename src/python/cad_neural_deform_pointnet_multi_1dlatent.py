@@ -41,8 +41,6 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
-FEATURES_REG_LOSS_WEIGHT = 0.001
-
 
 def load_mesh(mesh_path, intermediate=10000, final=2048):
     mesh = trimesh.load(mesh_path, process=False)
@@ -57,25 +55,22 @@ def load_mesh(mesh_path, intermediate=10000, final=2048):
 
     return torch.from_numpy(V), torch.from_numpy(F), torch.from_numpy(E), torch.from_numpy(V_sample)
 
-V1, F1, E1, V1_surf = load_mesh(source_path)
+V1, F1, E1, _ = load_mesh(source_path)
 GV1 = V1.clone()
 GE1 = E1.clone()
 
 V_targs = []
-V_surf_targs = []
 F_targs = []
 E_targs = []
 GV_targs = []
 GE_targs = []
 n_targs = len(reference_paths)
 
-# TODO(connorzl): pad GV and GE properly for batching.
 for reference_path in reference_paths:
-    V, F, E, V_surf = load_mesh(reference_path)
+    V, F, E, _ = load_mesh(reference_path)
     V_targs.append(V)
     F_targs.append(F)
     E_targs.append(E)
-    V_surf_targs.append(V_surf)
     GV_targs.append(V.clone())
     GE_targs.append(E.clone())
 
@@ -93,29 +88,20 @@ func.to(device)
 
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
 
-# Clone skeleton vertices for computing loss.
-GV1_origin = GV1.clone()
+# Clone skeleton vertices for computing reverse loss.
 GV_origin_targs = []
 for GV_targ in GV_targs:
-    GV_origin = GV_targ.clone()
-    GV_origin_targs.append(GV_origin)
+    GV_origin_targs.append(GV_targ.clone())
 
 # Move skeleton vertices to device for deformation.
 GV1_device = GV1.to(device)
-GV_device_targs = []
-for GV in GV_targs:
-    GV_targ = GV.to(device)
-    GV_device_targs.append(GV_targ)
 
 niter = 1000
-loss_min = 1e30
-eps = 1e-6
 print("Starting training!")
-#all_source_target_latents = torch.FloatTensor([[0, 0.5], [0, 1.0]]).to(device)
-all_source_target_latents = torch.FloatTensor([[0, 0.25], [0, 0.5], [0, 0.75], [0, 1.0]]).to(device)
+all_source_target_latents = torch.FloatTensor([[0, 0.5], [0, 1.0]]).to(device)
+#all_source_target_latents = torch.FloatTensor([[0, 0.25], [0, 0.5], [0, 0.75], [0, 1.0]]).to(device)
 for it in range(0, niter):
     optimizer.zero_grad()
-
     loss = 0
 
     for i in range(n_targs):
@@ -123,22 +109,14 @@ for it in range(0, niter):
         
         # Compute and integrate velocity field for deformation.
         GV1_deformed = func.forward(GV1_device, source_target_latents)
-
-        # Same as above, but in opposite direction.
-        #GV2_deformed, GV1_features_deformed = func.inverse(
-        #    (GV_device_targs[i], GV1_features_device))
     
         # Source to target.
         loss1_forward = graph_loss(
             GV1_deformed, GE1, GV_targs[i], GE_targs[i], i, 0)
         loss1_backward = reverse_loss(GV1_deformed, GV_origin_targs[i], device)
 
-        # Target to source.
-        #loss2_forward = graph_loss(GV1, GE1, GV2_deformed, GE_targs[i], i, 1)
-        #loss2_backward = reverse_loss(GV2_deformed, GV1_origin, device)
-
         # Total loss.
-        loss += loss1_forward + loss1_backward #+ loss2_forward + loss2_backward
+        loss += loss1_forward + loss1_backward
 
         if it % 100 == 0 or True:
             print('iter= % d, target_index= % d loss1_forward= % .6f loss1_backward= % .6f'
@@ -161,7 +139,6 @@ pyDeform.NormalizeByTemplate(V1_copy, param_id1.tolist())
 V1_copy = V1_copy.to(device)
 
 results = []
-
 for i in range(n_targs):
     source_target_latents = all_source_target_latents[i].unsqueeze(1)
     V1_deformed = func.forward(V1_copy, source_target_latents)
