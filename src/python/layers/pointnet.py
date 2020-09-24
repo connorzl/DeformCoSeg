@@ -19,27 +19,20 @@ class STN3d(nn.Module):
         self.fc3 = nn.Linear(256, 9)
         self.relu = nn.ReLU()
 
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
-        self.bn4 = nn.BatchNorm1d(512)
-        self.bn5 = nn.BatchNorm1d(256)
-
-
     def forward(self, x):
         batchsize = x.size()[0]
         # Convolution layers to get features B x F x N
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
         # Max pool along points dimension: B x F x 1
         x = torch.max(x, 2, keepdim=True)[0]
         # Basically a squeeze operator
         x = x.view(-1, 1024)
 
         # Fully connected layers: B x F'
-        x = F.relu(self.bn4(self.fc1(x)))
-        x = F.relu(self.bn5(self.fc2(x)))
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
 
         # Output layer: B x 9
         x = self.fc3(x)
@@ -55,60 +48,13 @@ class STN3d(nn.Module):
         return x
 
 
-# Basically the same as STN3d, but with k for features dimensions instead of 3 for [x, y, z] coordinates.
-class STNkd(nn.Module):
-    def __init__(self, k=64):
-        super(STNkd, self).__init__()
-        self.conv1 = torch.nn.Conv1d(k, 64, 1)
-        self.conv2 = torch.nn.Conv1d(64, 128, 1)
-        self.conv3 = torch.nn.Conv1d(128, 1024, 1)
-        self.fc1 = nn.Linear(1024, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, k*k)
-        self.relu = nn.ReLU()
-
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
-        self.bn4 = nn.BatchNorm1d(512)
-        self.bn5 = nn.BatchNorm1d(256)
-
-        self.k = k
-
-    def forward(self, x):
-        batchsize = x.size()[0]
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = torch.max(x, 2, keepdim=True)[0]
-        x = x.view(-1, 1024)
-
-        x = F.relu(self.bn4(self.fc1(x)))
-        x = F.relu(self.bn5(self.fc2(x)))
-        x = self.fc3(x)
-
-        iden = Variable(torch.from_numpy(np.eye(self.k).flatten().astype(np.float32))).view(1,self.k*self.k).repeat(batchsize,1)
-        if x.is_cuda:
-            iden = iden.cuda()
-        x = x + iden
-        x = x.view(-1, self.k, self.k)
-        return x
-
-
 class PointNetfeat(nn.Module):
-    def __init__(self, global_feat = True, feature_transform = False):
+    def __init__(self):
         super(PointNetfeat, self).__init__()
         self.stn = STN3d()
         self.conv1 = torch.nn.Conv1d(3, 64, 1)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
-        self.global_feat = global_feat
-        self.feature_transform = feature_transform
-        if self.feature_transform:
-            self.fstn = STNkd(k=64)
 
     def forward(self, x):
         n_pts = x.size()[2]
@@ -119,44 +65,15 @@ class PointNetfeat(nn.Module):
         x = torch.bmm(x, trans)
         x = x.transpose(2, 1)
         # B x 64 x n_pts
-        x = F.relu(self.bn1(self.conv1(x)))
-
-        if self.feature_transform:
-            # B x 64 x 64
-            trans_feat = self.fstn(x)
-            x = x.transpose(2,1)
-            x = torch.bmm(x, trans_feat)
-            x = x.transpose(2,1)
-        else:
-            trans_feat = None
-
-        # B x 64 x n_pts
-        pointfeat = x
+        x = F.relu(self.conv1(x))
 
         # B x 1024
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = self.bn3(self.conv3(x))
+        x = F.relu(self.conv2(x))
+        x = self.conv3(x)
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(-1, 1024)
+        return x
 
-        if self.global_feat:
-            # B x 1024, B x 3 x 3, B x 64 x 64
-            return x, trans, trans_feat
-        else:
-            x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
-            x = torch.cat([x, pointfeat], 1)
-            # B x (64 + 1024), B x 3 x 3, B x 64 x 64
-            return x, trans, trans_feat
-
-
-def feature_transform_regularizer(trans):
-    d = trans.size()[1]
-    batchsize = trans.size()[0]
-    I = torch.eye(d)[None, :, :]
-    if trans.is_cuda:
-        I = I.cuda()
-    loss = torch.mean(torch.norm(torch.bmm(trans, trans.transpose(2,1)) - I, dim=(1,2)))
-    return loss
 
 if __name__ == '__main__':
     # Batch x Point x Number of Points
@@ -175,6 +92,6 @@ if __name__ == '__main__':
     print('loss', feature_transform_regularizer(out))
     """
 
-    pointfeat = PointNetfeat(global_feat=True, feature_transform=True)
-    out, _, _ = pointfeat(sim_data)
+    pointfeat = PointNetfeat()
+    out = pointfeat(sim_data)
     print('global feat', out.size())

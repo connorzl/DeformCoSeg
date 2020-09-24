@@ -14,12 +14,11 @@ from layers.graph_loss2_layer import GraphLoss2LayerMulti, Finalize
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.maf import MAF
 from layers.neuralode_fast import NeuralFlowDeformer
-from layers.pointnet import PointNetfeat, feature_transform_regularizer
-from util.samplers import fps, sample_faces
+from util.samplers import load_mesh
 import pyDeform
 
 import numpy as np
-from time import time
+from timeit import default_timer as timer
 import trimesh
 
 import argparse
@@ -42,20 +41,11 @@ save_path = args.save_path
 device = torch.device(args.device)
 
 
-def load_mesh(mesh_path, intermediate=10000, final=2048):
-    mesh = trimesh.load(mesh_path, process=False)
-    V = mesh.vertices.astype(np.float32)
-    F = mesh.faces.astype(np.int32)
-    E = mesh.edges.astype(np.int32)
-    
-    # Surface vertices for PointNet input.
-    V_sample, _, _ = sample_faces(V, F, n_samples=intermediate)
-    V_sample, _ = fps(V_sample, final)
-    V_sample = V_sample.astype(np.float32)
-
-    return torch.from_numpy(V), torch.from_numpy(F), torch.from_numpy(E), torch.from_numpy(V_sample)
-
 V1, F1, E1, _ = load_mesh(source_path)
+V1 = torch.from_numpy(V1)
+F1 = torch.from_numpy(F1)
+E1 = torch.from_numpy(E1)
+
 GV1 = V1.clone()
 GE1 = E1.clone()
 
@@ -68,6 +58,9 @@ n_targs = len(reference_paths)
 
 for reference_path in reference_paths:
     V, F, E, _ = load_mesh(reference_path)
+    V = torch.from_numpy(V)
+    F = torch.from_numpy(F)
+    E = torch.from_numpy(E)
     V_targs.append(V)
     F_targs.append(F)
     E_targs.append(E)
@@ -99,31 +92,40 @@ GV1_device = GV1.to(device)
 niter = 1000
 print("Starting training!")
 all_source_target_latents = torch.FloatTensor([[0, 0.5], [0, 1.0]]).to(device)
-#all_source_target_latents = torch.FloatTensor([[0, 0.25], [0, 0.5], [0, 0.75], [0, 1.0]]).to(device)
 for it in range(0, niter):
     optimizer.zero_grad()
     loss = 0
 
     for i in range(n_targs):
+        model_start = timer() 
         source_target_latents = all_source_target_latents[i].unsqueeze(1)
-        
-        # Compute and integrate velocity field for deformation.
         GV1_deformed = func.forward(GV1_device, source_target_latents)
+        model_end = timer()
     
         # Source to target.
+        losses_forward_start = timer()
         loss1_forward = graph_loss(
             GV1_deformed, GE1, GV_targs[i], GE_targs[i], i, 0)
         loss1_backward = reverse_loss(GV1_deformed, GV_origin_targs[i], device)
-
-        # Total loss.
         loss += loss1_forward + loss1_backward
+        losses_forward_end = timer()
+
+        #print("model_time:", model_end - model_start)
+        #print("losses_forward_time:", losses_forward_end - losses_forward_start)
 
         if it % 100 == 0 or True:
             print('iter= % d, target_index= % d loss1_forward= % .6f loss1_backward= % .6f'
                   % (it, i, np.sqrt(loss1_forward.item() / GV1.shape[0]),
                      np.sqrt(loss1_backward.item() / GV_targs[i].shape[0])))
+    loss_backward_start = timer()
     loss.backward()
+    loss_backward_end = timer()
+
+    optimizer_start = timer()
     optimizer.step()
+    optimizer_end = timer()
+    print("loss_backward_time:", loss_backward_end - loss_backward_start)
+    #print("optimizer_time:", optimizer_end - optimizer_start)
 
 # Evaluate final result.
 if save_path != '':

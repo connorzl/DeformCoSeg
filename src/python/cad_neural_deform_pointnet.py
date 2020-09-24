@@ -14,13 +14,12 @@ from layers.graph_loss2_layer import GraphLoss2Layer, Finalize
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.maf import MAF
 from layers.neuralode_fast import NeuralFlowDeformer
-from layers.pointnet import PointNetfeat, feature_transform_regularizer
-from util.samplers import fps, sample_faces
+from layers.pointnet import PointNetfeat
+from util.samplers import load_mesh
 import pyDeform
 
 import numpy as np
-from time import time
-import trimesh
+from timeit import default_timer as timer
 
 import argparse
 
@@ -41,27 +40,18 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
-FEATURES_REG_LOSS_WEIGHT = 0.001
 
-def sample_from_surface(V, F, intermediate=10000, final=2048):
-    V_sample, _, _ = sample_faces(V.detach().numpy(), F.detach().numpy(), n_samples=intermediate)
-    V_sample, _ = fps(V_sample, final)
-    V_sample = torch.from_numpy(V_sample)
-    return V_sample
+V1, F1, E1, V1_surf = load_mesh(source_path)
+V1 = torch.from_numpy(V1)
+F1 = torch.from_numpy(F1)
+E1 = torch.from_numpy(E1)
+V1_surf = torch.from_numpy(V1_surf)
 
-def load_mesh(mesh_path):
-    mesh = trimesh.load(mesh_path, process=False)
-    verts = torch.from_numpy(mesh.vertices.astype(np.float32))
-    edges = torch.from_numpy(mesh.edges.astype(np.int32))
-    faces = torch.from_numpy(mesh.faces.astype(np.int32))
-    return verts, faces, edges
-
-
-V1, F1, E1 = load_mesh(source_path)
-V2, F2, E2 = load_mesh(reference_path)
-
-V1_surf = sample_from_surface(V1, F1).float()
-V2_surf = sample_from_surface(V2, F2).float()
+V2, F2, E2, V2_surf = load_mesh(source_path)
+V2 = torch.from_numpy(V2)
+F2 = torch.from_numpy(F2)
+E2 = torch.from_numpy(E2)
+V2_surf = torch.from_numpy(V2_surf)
 
 GV1 = V1.clone()
 GE1 = E1.clone()
@@ -72,9 +62,8 @@ print("Source num vertices:", V1.shape)
 print("Target num vertices:", V2.shape)
 
 # PointNet layer.
-pointnet = PointNetfeat(global_feat=True, feature_transform=True)
+pointnet = PointNetfeat()
 pointnet = pointnet.to(device)
-pointnet.eval()
 
 # Deformation losses layer.
 graph_loss = GraphLoss2Layer(
@@ -105,43 +94,37 @@ niter = 1000
 for it in range(0, niter):
     optimizer.zero_grad()
 
+    model_start = timer() 
     # Encode both skeleton meshes using PointNet.
-    V1_features_device, _, V1_trans_feat = pointnet(V1_pointnet_input)
-    V2_features_device, _, V2_trans_feat = pointnet(V2_pointnet_input)
+    V1_features_device = pointnet(V1_pointnet_input)
+    V2_features_device = pointnet(V2_pointnet_input)
     source_target_latents = torch.cat([V1_features_device, V2_features_device], dim=0)
-    #target_source_latents = torch.cat([GV2_features_device, GV1_features_device], dim=0)
-
-    # Compute and integrate velocity field for deformation.
     GV1_deformed = func.forward(GV1_device, source_target_latents)
-    #GV2_deformed = func.inverse(GV2_device, target_source_latents)
+    model_end = timer()
+    
+    losses_forward_start = timer()
     loss1_forward = graph_loss(GV1_deformed, GE1, GV2, GE2, 0)
     loss1_backward = reverse_loss(GV1_deformed, GV2_origin, device)
-    loss1_features_reg = FEATURES_REG_LOSS_WEIGHT * \
-        feature_transform_regularizer(V1_trans_feat)
+    loss = loss1_forward + loss1_backward
+    losses_forward_end = timer()
 
-    #loss2_forward = graph_loss(GV1, GE1, GV2_deformed, GE2, 1)
-    #loss2_backward = reverse_loss(GV2_deformed, GV1_origin, device)
-    loss2_features_reg = FEATURES_REG_LOSS_WEIGHT * \
-        feature_transform_regularizer(V2_trans_feat)
-
-    loss = loss1_forward + loss1_backward + loss1_features_reg + loss2_features_reg
-    #loss = loss1_forward + loss1_backward + loss2_forward + \
-    #    loss1_features_reg + loss2_backward + loss2_features_reg
-
+    loss_backward_start = timer()
     loss.backward()
+    loss_backward_end = timer()
+
+    optimizer_start = timer()
     optimizer.step()
+    optimizer_end = timer()
+
+    print("model_time:", model_end - model_start)
+    print("losses_forward_time:", losses_forward_end - losses_forward_start)
+    print("loss_backward_time:", loss_backward_end - loss_backward_start)
+    print("optimizer_time:", optimizer_end - optimizer_start)
 
     if it % 100 == 0 or True:
         print('iter=%d, loss1_forward=%.6f loss1_backward=%.6f'
               % (it, np.sqrt(loss1_forward.item() / GV1.shape[0]),
                  np.sqrt(loss1_backward.item() / GV2.shape[0])))
-        """
-        print('iter=%d, loss1_forward=%.6f loss1_backward=%.6f loss2_forward=%.6f loss2_backward=%.6f'
-              % (it, np.sqrt(loss1_forward.item() / GV1.shape[0]),
-                 np.sqrt(loss1_backward.item() / GV2.shape[0]),
-                 np.sqrt(loss2_forward.item() / GV2.shape[0]),
-                 np.sqrt(loss2_backward.item() / GV1.shape[0])))
-        """
         current_loss = loss.item()
 
 # Evaluate final result.
@@ -154,8 +137,8 @@ V1_copy_direct_origin = V1_copy_direct.clone()
 # Deform original mesh directly, different from paper.
 pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
 
-V1_features_device, _, _ = pointnet(V1_pointnet_input)
-V2_features_device, _, _ = pointnet(V2_pointnet_input)
+V1_features_device = pointnet(V1_pointnet_input)
+V2_features_device = pointnet(V2_pointnet_input)
 source_target_latents = torch.cat([V1_features_device, V2_features_device], dim=0)
 
 V1_copy_direct = V1_copy_direct.to(device)

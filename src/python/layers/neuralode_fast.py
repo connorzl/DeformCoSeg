@@ -100,6 +100,7 @@ class NeuralFlowModel(nn.Module):
         if not self.latent_updated:
             raise RuntimeError('Latent not updated. '
                                'Use .update_latents() to update the source and target latents.')
+        print("flow network t:", t)
         latent_val = self.latent_at_t(t)
         flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
         flow *= torch.norm(self.latent_sequence[1, :] - self.latent_sequence[0, :])
