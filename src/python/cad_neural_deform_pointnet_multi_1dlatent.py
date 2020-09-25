@@ -19,7 +19,6 @@ import pyDeform
 
 import numpy as np
 from timeit import default_timer as timer
-import trimesh
 
 import argparse
 
@@ -110,9 +109,6 @@ for it in range(0, niter):
         loss += loss1_forward + loss1_backward
         losses_forward_end = timer()
 
-        #print("model_time:", model_end - model_start)
-        #print("losses_forward_time:", losses_forward_end - losses_forward_start)
-
         if it % 100 == 0 or True:
             print('iter= % d, target_index= % d loss1_forward= % .6f loss1_backward= % .6f'
                   % (it, i, np.sqrt(loss1_forward.item() / GV1.shape[0]),
@@ -125,7 +121,6 @@ for it in range(0, niter):
     optimizer.step()
     optimizer_end = timer()
     print("loss_backward_time:", loss_backward_end - loss_backward_start)
-    #print("optimizer_time:", optimizer_end - optimizer_start)
 
 # Evaluate final result.
 if save_path != '':
