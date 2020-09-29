@@ -1,8 +1,11 @@
+import os
 import torch
 from torch import nn
-from torchdiffeq import odeint_adjoint
-
+from torchdiffeq import odeint
 import numpy as np
+
+import torchdiffeq
+print("torchdiffeq library location:", os.path.dirname(torchdiffeq.__file__))
 
 class ODEFunc(nn.Module):
     def __init__(self):
@@ -147,7 +150,7 @@ class NeuralFlowDeformer(nn.Module):
         """
         super(NeuralFlowDeformer, self).__init__()
         self.method = method
-        self.odeint = odeint_adjoint
+        self.odeint = odeint
         self.timing = torch.from_numpy(np.array([0., 1.]).astype('float32'))
         self.timing = self.timing.to(device)
         self.timing_inv = torch.from_numpy(np.array([1, 0]).astype('float32'))

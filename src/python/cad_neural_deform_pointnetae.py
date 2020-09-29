@@ -96,25 +96,24 @@ param_id2 = graph_loss.param_id2
 reverse_loss = ReverseLossLayer()
 
 # Flow layer.
-func = NeuralFlowDeformer(dim=3, latent_size=1024, device=device)
+func = NeuralFlowDeformer(dim=3, latent_size=1024, method="rk4", device=device)
 func.to(device)
 
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
-
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
+
+# Encode both skeleton meshes using PointNet.
+_, V1_features_device = pointnet_ae(V1_pointnet_input)
+_, V2_features_device = pointnet_ae(V2_pointnet_input)
+source_target_latents = torch.cat([V1_features_device, V2_features_device], dim=0)
 
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
 niter = 1000
 print("starting training!")
 for it in range(0, niter):
     optimizer.zero_grad()
-
-    # Encode both skeleton meshes using PointNet.
-    _, V1_features_device = pointnet_ae(V1_pointnet_input)
-    _, V2_features_device = pointnet_ae(V2_pointnet_input)
-    source_target_latents = torch.cat([V1_features_device, V2_features_device], dim=0)
 
     # Compute and integrate velocity field for deformation.
     GV1_deformed = func.forward(GV1_device, source_target_latents)
