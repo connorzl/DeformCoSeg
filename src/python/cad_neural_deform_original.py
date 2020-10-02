@@ -4,15 +4,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + 'layers')
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build')))
 
-from torch import nn
 import torch.optim as optim
-from torch.autograd import Function
-
 import torch
-from layers.graph_loss2_layer import GraphLoss2Layer, Finalize
+from layers.graph_loss2_layer import GraphLoss2Layer
 from layers.reverse_loss_layer import ReverseLossLayer
-from layers.maf import MAF
-from layers.neuralode_fast import NeuralODE
+from layers.neuralode import NeuralODE
 import pyDeform
 
 import numpy as np

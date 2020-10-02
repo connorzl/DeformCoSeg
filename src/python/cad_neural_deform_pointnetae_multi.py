@@ -10,14 +10,11 @@ POINTNET_AE_UTILS_DIR = "../../../../pytorch_shapenet_ae/exps/utils"
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), POINTNET_AE_DIR))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), POINTNET_AE_UTILS_DIR))
 
-from torch import nn
 import torch.optim as optim
-from torch.autograd import Function
-
 import torch
 from layers.graph_loss2_layer import GraphLoss2LayerMulti
 from layers.reverse_loss_layer import ReverseLossLayer
-from layers.neuralode_fast import NeuralFlowDeformer
+from layers.neuralode_conditional import NeuralFlowDeformer
 from models.model_v1 import Network
 from util.samplers import load_mesh
 import pyDeform
