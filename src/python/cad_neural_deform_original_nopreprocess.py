@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__f
 
 import torch.optim as optim
 import torch
-from layers.graph_loss2_layer import GraphLoss2Layer
+from layers.graph_loss_layer import GraphLossLayer
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode import NeuralODE
 import pyDeform
@@ -49,7 +49,7 @@ GE1 = E1.clone()
 GV2 = V2.clone()
 GE2 = E2.clone()
 
-graph_loss = GraphLoss2Layer(V1,F1,GV1,GE1,V2,F2,GV2,GE2,rigidity,device)
+graph_loss = GraphLossLayer(V1,F1,GV1,GE1,V2,F2,GV2,GE2,rigidity,device)
 param_id1 = graph_loss.param_id1
 param_id2 = graph_loss.param_id2
 

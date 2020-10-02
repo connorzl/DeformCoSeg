@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__f
 import torch.optim as optim
 
 import torch
-from layers.graph_loss2_layer import GraphLoss2LayerMulti
+from layers.graph_loss_layer import GraphLossLayerMulti
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode import NeuralFlowDeformer
 from layers.pointnet import PointNetfeat
@@ -37,8 +37,6 @@ output_path = args.output
 rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
-
-FEATURES_REG_LOSS_WEIGHT = 0.001
 
 
 def load_mesh(mesh_path, intermediate=10000, final=2048):
@@ -82,7 +80,7 @@ pointnet = pointnet.to(device)
 pointnet.eval()
 
 # Deformation losses layer.
-graph_loss = GraphLoss2LayerMulti(
+graph_loss = GraphLossLayerMulti(
     V1, F1, GV1, GE1, V_targs, F_targs, GV_targs, GE_targs, rigidity, device)
 param_id1 = graph_loss.param_id1
 param_id_targs = graph_loss.param_id_targs

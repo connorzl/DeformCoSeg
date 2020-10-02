@@ -12,7 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), POINTNE
 
 import torch.optim as optim
 import torch
-from layers.graph_loss2_layer import GraphLoss2LayerMulti
+from layers.graph_loss_layer import GraphLossLayerMulti
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
 from models.model_v1 import Network
@@ -79,7 +79,7 @@ pointnet.eval()
 pointnet = pointnet.to(device)
 
 # Deformation losses layer.
-graph_loss = GraphLoss2LayerMulti(
+graph_loss = GraphLossLayerMulti(
     V1, F1, GV1, GE1, V_targs, F_targs, GV_targs, GE_targs, rigidity, device)
 param_id1 = graph_loss.param_id1
 param_id_targs = graph_loss.param_id_targs
