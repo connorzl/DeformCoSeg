@@ -115,6 +115,34 @@ class GraphLossLayerMulti(nn.Module):
                                         self.rigidity2, self.param_id_targs[index], self.param_id1)
 
 
+class GraphLossLayerPairs(nn.Module):
+    def __init__(self, V_all, F_all, graph_V_all, graph_E_all,
+                 rigidity, d=torch.device('cpu')):
+        super(GraphLossLayerPairs, self).__init__()
+
+        global device
+        device = d
+
+        self.param_ids = []
+        for i in range(len(V_all)):
+            self.param_ids.append(torch.tensor(
+                pyDeform.InitializeDeformTemplate(V_all[i], F_all[i], 0, 64)))
+            
+            pyDeform.NormalizeByTemplate(graph_V_all[i], self.param_ids[i].tolist())
+
+            pyDeform.StoreGraphInformation(
+                graph_V_all[i], graph_E_all[i], self.param_ids[i].tolist())
+        self.rigidity2 = torch.tensor(rigidity * rigidity)
+
+    def forward(self, V1, E1, V2, E2, index_1, index_2, direction):
+        if direction == 0:
+            return GraphLossFunction.apply(V1, E1,
+                                            self.rigidity2, self.param_ids[index_1], self.param_ids[index_2])
+
+        return GraphLossFunction.apply(V2, E2,
+                                        self.rigidity2, self.param_id_targs[index_2], self.param_ids[index_1])
+
+
 def Finalize(src_V, src_F, src_E, src_to_graph, graph_V, rigidity, param_id):
     pyDeform.NormalizeByTemplate(src_V, param_id.tolist())
     pyDeform.SolveLinear(src_V, src_F, src_E, src_to_graph, graph_V, rigidity, 1)

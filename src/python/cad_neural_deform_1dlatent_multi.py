@@ -7,106 +7,77 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__f
 
 import torch.optim as optim
 import torch
-from layers.graph_loss_layer import GraphLossLayerMulti
+from layers.graph_loss_layer import GraphLossLayerPairs
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
-from util.load_data import load_mesh_tensors
+from util.load_data import compute_deformation_pairs, load_neural_deform_data
 from util.save_data import save_results
 import pyDeform
-
 import numpy as np
-from timeit import default_timer as timer
-
 import argparse
 
 parser = argparse.ArgumentParser(description='Rigid Deformation.')
-parser.add_argument('--source', default='../data/cad-source.obj')
-parser.add_argument('--target', default=[], action='append')
-parser.add_argument('--output', default='./cad-output')
+parser.add_argument('--input', default=[], action='append')
+parser.add_argument('--output_prefix', default='./cad-output')
+parser.add_argument('--all_pairs', action='store_true')
 parser.add_argument('--rigidity', default='0.1')
 parser.add_argument('--device', default='cuda')
 parser.add_argument('--save_path', default='./cad-output.ckpt')
 parser.add_argument('--num_iter', default=1000)
 args = parser.parse_args()
 
-source_path = args.source
-reference_paths = args.target
-output_path = args.output
+input_paths = args.input
+output_prefix = args.output_prefix
 rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
+# Load meshes.
+(V_all, F_all, E_all, V_surf_all), (GV_all, GE_all, GV_origin_all, GV_device_all) = \
+        load_neural_deform_data(args.input, device)
 
-V1, F1, E1, _ = load_mesh_tensors(source_path)
-GV1 = V1.clone()
-GE1 = E1.clone()
+# Compute all deformation pairs.
+deformation_pairs = compute_deformation_pairs(args.all_pairs, len(input_paths))
 
-V_targs = []
-F_targs = []
-E_targs = []
-GV_targs = []
-GE_targs = []
-n_targs = len(reference_paths)
-for reference_path in reference_paths:
-    V, F, E, _ = load_mesh_tensors(reference_path)
-    V_targs.append(V)
-    F_targs.append(F)
-    E_targs.append(E)
-    GV_targs.append(V.clone())
-    GE_targs.append(E.clone())
-
-# Deformation losses layer.
-graph_loss = GraphLossLayerMulti(
-    V1, F1, GV1, GE1, V_targs, F_targs, GV_targs, GE_targs, rigidity, device)
-param_id1 = graph_loss.param_id1
-param_id_targs = graph_loss.param_id_targs
-
+graph_loss = GraphLossLayerPairs(V_all, F_all, GV_all, GE_all, rigidity, device)
+param_ids = graph_loss.param_ids
 reverse_loss = ReverseLossLayer()
 
 # Flow layer.
 func = NeuralFlowDeformer(dim=3, latent_size=1, method="dopri5", device=device)
 func.to(device)
-
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
 
-# Clone skeleton vertices for computing reverse loss.
-GV_origin_targs = []
-for GV_targ in GV_targs:
-    GV_origin_targs.append(GV_targ.clone())
-
-# Move skeleton vertices to device for deformation.
-GV1_device = GV1.to(device)
+# Compute 1D latent codes for conditioning.
+source_target_latents = []
+stepsize = 1.0 / (len(input_paths) - 1)
+for (src, targ) in deformation_pairs:
+    start = src * stepsize
+    end = targ * stepsize
+    source_target_latents.append([start, end])
+source_target_latents = torch.FloatTensor(source_target_latents).to(device)
+print("1D source_target_latents:", source_target_latents)
 
 print("Starting training!")
-
-# Compute 1D latent codes
-all_source_target_latents = []
-stepsize = 1.0 / len(reference_paths)
-for i in range(len(reference_paths)):
-    start = 0
-    end = (i + 1) * stepsize
-    all_source_target_latents.append([start, end])
-all_source_target_latents = torch.FloatTensor(all_source_target_latents).to(device)
-print("all_source_target_latents:", all_source_target_latents)
-
 for it in range(int(args.num_iter)):
     optimizer.zero_grad()
-    loss = 0
-
-    for i in range(n_targs):
-        source_target_latents = all_source_target_latents[i].unsqueeze(1)
-        GV1_deformed = func.forward(GV1_device, source_target_latents)
     
-        # Source to target.
-        loss1_forward = graph_loss(
-            GV1_deformed, GE1, GV_targs[i], GE_targs[i], i, 0)
-        loss1_backward = reverse_loss(GV1_deformed, GV_origin_targs[i], device)
-        loss += loss1_forward + loss1_backward
+    loss = 0
+    for i, (src, targ) in enumerate(deformation_pairs):
+        # Compute and integrate velocity field for deformation.
+        GV_deformed = func.forward(GV_device_all[src], source_target_latents[i].unsqueeze(1))
 
+        # Source to target.
+        loss_forward = graph_loss(
+            GV_deformed, GE_all[src], GV_all[targ], GE_all[targ], src, targ, 0)
+        loss_backward = reverse_loss(GV_deformed, GV_origin_all[targ], device)
+
+        # Total loss.
+        loss += loss_forward + loss_backward
         if it % 100 == 0 or True:
-            print('iter= % d, target_index= % d loss1_forward= % .6f loss1_backward= % .6f'
-                  % (it, i, np.sqrt(loss1_forward.item() / GV1.shape[0]),
-                     np.sqrt(loss1_backward.item() / GV_targs[i].shape[0])))
+            print('iter= %d, source_index= %d, target_index= %d, loss_forward= %.6f, loss_backward= %.6f'
+                  % (it, src, targ, np.sqrt(loss_forward.item() / GV_all[src].shape[0]),
+                     np.sqrt(loss_backward.item() / GV_all[targ].shape[0])))
     loss.backward()
     optimizer.step()
 
@@ -114,10 +85,9 @@ for it in range(int(args.num_iter)):
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
 
-for i in range(n_targs):
-    latent_code = all_source_target_latents[i].unsqueeze(1)
-    output = output_path[:-4] + "_" + str(i+1).zfill(2) + ".obj"
-    
-    save_results(V1, F1, E1, V_targs[i], F_targs[i], func, param_id1.tolist(), \
-            param_id_targs[i].tolist(), output, device, latent_code)
+for i, (src, targ) in enumerate(deformation_pairs):
+    latent_code = source_target_latents[i].unsqueeze(1)
+    output = output_prefix + "_" + str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
+    save_results(V_all[src], F_all[src], E_all[src], V_all[targ], F_all[targ], func, \
+            param_ids[src].tolist(), param_ids[targ].tolist(), output, device, latent_code)
 

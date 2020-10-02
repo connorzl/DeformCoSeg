@@ -1,11 +1,12 @@
 !_TAG_FILE_SORTED	2	/0=unsorted, 1=sorted, 2=foldcase/
 binary_tree_pooling	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def binary_tree_pooling(batch_data, k=2, num_points=None):$/;"	f	language:Python
+compute_deformation_pairs	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def compute_deformation_pairs(all_pairs, n):$/;"	f	language:Python
 export_obj	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def export_obj(out, v, f):$/;"	f	language:Python
 fps	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def fps(x, num_points, idx=None):$/;"	f	language:Python
 is_power2	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def is_power2(num):$/;"	f	language:Python
 kdtree_index_pc	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def kdtree_index_pc(batch_data):$/;"	f	language:Python
-load_mesh	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_mesh(mesh_path, intermediate=10000, final=2048):$/;"	f	language:Python
 load_mesh_tensors	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_mesh_tensors(mesh_path, intermediate=10000, final=2048):$/;"	f	language:Python
+load_neural_deform_data	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):$/;"	f	language:Python
 render_obj	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def render_obj(out, v, f, delete_img=False, flat_shading=True):$/;"	f	language:Python
 sample_faces	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def sample_faces(vertices, faces, n_samples=10**4):$/;"	f	language:Python
 save_results	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^        output_path, device, latent_code=None):$/;"	f	language:Python
