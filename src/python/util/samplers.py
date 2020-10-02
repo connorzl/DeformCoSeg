@@ -115,17 +115,3 @@ def sample_faces(vertices, faces, n_samples=10**4):
   P = (1 - np.sqrt(r[:,0:1])) * A + np.sqrt(r[:,0:1]) * (1 - r[:,1:]) * B + \
       np.sqrt(r[:, 0:1]) * r[:, 1:] * C
   return P, sample_face_idx, r
-
-
-def load_mesh(mesh_path, intermediate=10000, final=2048):
-    mesh = trimesh.load(mesh_path, process=False)
-    V = mesh.vertices.astype(np.float32)
-    F = mesh.faces.astype(np.int32)
-    E = mesh.edges.astype(np.int32)
-    
-    # Surface vertices for PointNet input.
-    V_sample, _, _ = sample_faces(V, F, n_samples=intermediate)
-    V_sample, _ = fps(V_sample, final)
-    V_sample = V_sample.astype(np.float32)
-
-    return V, F, E, V_sample

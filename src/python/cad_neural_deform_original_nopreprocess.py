@@ -9,9 +9,9 @@ import torch
 from layers.graph_loss_layer import GraphLossLayer
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode import NeuralODE
+from util.load_data import load_mesh_tensors
+from util.save_data import save_results
 import pyDeform
-
-import trimesh
 
 import numpy as np
 from time import time
@@ -25,7 +25,7 @@ parser.add_argument('--output', default='./cad-output.obj')
 parser.add_argument('--rigidity', default='0.1')
 parser.add_argument('--device', default='cuda')
 parser.add_argument('--save_path', default='./cad-output.ckpt')
-
+parser.add_argument('--num_iter', default=1000)
 args = parser.parse_args()
 
 source_path = args.source
@@ -35,15 +35,8 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
-def load_mesh(mesh_path):
-	mesh = trimesh.load(mesh_path, process=False)
-	verts = torch.from_numpy(mesh.vertices.astype(np.float32))
-	edges = torch.from_numpy(mesh.edges.astype(np.int32))
-	faces = torch.from_numpy(mesh.faces.astype(np.int32))
-	return verts, faces, edges
-
-V1, F1, E1 = load_mesh(source_path)
-V2, F2, E2 = load_mesh(reference_path)
+V1, F1, E1, _ = load_mesh_tensors(source_path)
+V2, F2, E2, _ = load_mesh_tensors(reference_path)
 GV1 = V1.clone()
 GE1 = E1.clone()
 GV2 = V2.clone()
@@ -61,12 +54,9 @@ optimizer = optim.Adam(func.parameters(), lr=1e-3)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 1000
-
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
-loss_min = 1e30
-for it in range(0, niter):
+for it in range(int(args.num_iter)):
 	optimizer.zero_grad()
 
 	GV1_deformed = func.forward(GV1_device)
@@ -95,19 +85,6 @@ for it in range(0, niter):
 if save_path != '':
 	torch.save({'func':func, 'optim':optimizer}, save_path)
 
-V1_copy_direct = V1.clone() 
-V1_copy_direct_origin = V1_copy_direct.clone()
+save_results(V1, F1, E1, V2, F2, func, param_id1.tolist(), param_id2.tolist(), \
+        output_path, device)
 
-# Deform original mesh directly, different from paper.
-pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
-
-func.func = func.func.cpu()
-# Considering extracting features for the original target mesh here.
-V1_copy_direct = func.forward(V1_copy_direct)
-V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
-src_to_src = torch.from_numpy(
-    np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
-
-pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
-pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
-pyDeform.SaveMesh(output_path, V1_copy_direct_origin, F1)

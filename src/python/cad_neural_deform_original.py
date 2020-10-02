@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + 'layers')
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + 'util')
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build')))
 
 import torch.optim as optim
@@ -9,6 +10,7 @@ import torch
 from layers.graph_loss_layer import GraphLossLayer
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode import NeuralODE
+from util.save_data import save_results
 import pyDeform
 
 import numpy as np
@@ -23,6 +25,7 @@ parser.add_argument('--output', default='./cad-output.obj')
 parser.add_argument('--rigidity', default='0.1')
 parser.add_argument('--device', default='cuda')
 parser.add_argument('--save_path', default='./cad-output.ckpt')
+parser.add_argument('--num_iter', default=1000)
 
 args = parser.parse_args()
 
@@ -49,12 +52,9 @@ optimizer = optim.Adam(func.parameters(), lr=1e-3)
 GV1_origin = GV1.clone()
 GV2_origin = GV2.clone()
 
-niter = 1000
-
 GV1_device = GV1.to(device)
 GV2_device = GV2.to(device)
-loss_min = 1e30
-for it in range(0, niter):
+for it in range(int(args.num_iter)):
 	optimizer.zero_grad()
 
 	GV1_deformed = func.forward(GV1_device)
@@ -83,35 +83,20 @@ for it in range(0, niter):
 if save_path != '':
 	torch.save({'func':func, 'optim':optimizer}, save_path)
 
-V1_copy_direct = V1.clone() 
-V1_copy_direct_origin = V1_copy_direct.clone()
-
+"""
 flow_path = output_path[:-4] + "_flow.txt")
 flow_final_path = output_path[:-4] + "_flow_final.txt")
-
-# Deform original mesh directly, different from paper.
-pyDeform.NormalizeByTemplate(V1_copy_direct, param_id1.tolist())
-
-func.func = func.func.cpu()
-# Considering extracting features for the original target mesh here.
 V1_copy_direct = func.forward(V1_copy_direct)
 flow = V1_copy_direct - V1
 flow = torch.cat((V1, flow), dim=1)
 flow_file = open(flow_path, 'w')
 np.savetxt(flow_file, flow.detach().numpy())
 flow_file.close()
-
-V1_copy_direct = torch.from_numpy(V1_copy_direct.data.cpu().numpy())
-src_to_src = torch.from_numpy(
-    np.array([i for i in range(V1_copy_direct_origin.shape[0])]).astype('int32'))
-
-pyDeform.SolveLinear(V1_copy_direct_origin, F1, E1, src_to_src, V1_copy_direct, 1, 1)
-pyDeform.DenormalizeByTemplate(V1_copy_direct_origin, param_id2.tolist())
-
 flow_final = V1_copy_direct_origin - V1
 flow_final = torch.cat((V1, flow_final), dim=1)
 flow_file = open(flow_final_path, 'w')
 np.savetxt(flow_file, flow_final.detach().numpy())
 flow_file.close()
-
-pyDeform.SaveMesh(output_path, V1_copy_direct_origin, F1)
+"""
+save_results(V1, F1, E1, V2, F2, func, param_id1.tolist(), param_id2.tolist(), \
+        output_path, device)

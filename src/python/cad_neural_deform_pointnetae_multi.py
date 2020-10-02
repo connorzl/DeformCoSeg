@@ -12,7 +12,8 @@ from layers.graph_loss_layer import GraphLossLayerMulti
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
 from layers.pointnet_ae import Network
-from util.samplers import load_mesh
+from util.load_data import load_mesh_tensors
+from util.save_data import save_results
 import pyDeform
 
 import numpy as np
@@ -29,7 +30,7 @@ parser.add_argument('--rigidity', default='0.1')
 parser.add_argument('--device', default='cuda')
 parser.add_argument('--save_path', default='./cad-output.ckpt')
 parser.add_argument('--pretrained_pointnet_ckpt_path', default='')
-
+parser.add_argument('--num_iter', default=1000)
 args = parser.parse_args()
 
 source_path = args.source
@@ -39,12 +40,7 @@ rigidity = float(args.rigidity)
 save_path = args.save_path
 device = torch.device(args.device)
 
-V1, F1, E1, V1_surf = load_mesh(source_path)
-V1 = torch.from_numpy(V1)
-F1 = torch.from_numpy(F1)
-E1 = torch.from_numpy(E1)
-V1_surf = torch.from_numpy(V1_surf)
-
+V1, F1, E1, V1_surf = load_mesh_tensors(source_path)
 
 GV1 = V1.clone()
 GE1 = E1.clone()
@@ -59,11 +55,11 @@ n_targs = len(reference_paths)
 
 # TODO(connorzl): pad GV and GE properly for batching.
 for reference_path in reference_paths:
-    V, F, E, V_surf = load_mesh(reference_path)
-    V_targs.append(torch.from_numpy(V))
-    F_targs.append(torch.from_numpy(F))
-    E_targs.append(torch.from_numpy(E))
-    V_surf_targs.append(torch.from_numpy(V_surf))
+    V, F, E, V_surf = load_mesh_tensors(reference_path)
+    V_targs.append(V)
+    F_targs.append(F)
+    E_targs.append(E)
+    V_surf_targs.append(V_surf)
     GV_targs.append(V_targs[-1].clone())
     GE_targs.append(E_targs[-1].clone())
 
@@ -114,9 +110,8 @@ source_target_latents = []
 for i in range(n_targs):
     source_target_latents.append(torch.cat([GV1_features, GV_targ_features[i, :].unsqueeze(0)], dim=0))
 
-niter = 1000
 print("Starting training!")
-for it in range(0, niter):
+for it in range(int(args.num_iter)):
     optimizer.zero_grad()
 
     loss = 0
@@ -143,27 +138,10 @@ for it in range(0, niter):
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
 
-V1_copy = V1.clone() 
-src_to_src = torch.from_numpy(
-    np.array([i for i in range(V1_copy.shape[0])]).astype('int32'))
-
-# Deform original mesh directly, different from paper.
-pyDeform.NormalizeByTemplate(V1_copy, param_id1.tolist())
-
-V1_copy = V1_copy.to(device)
-results = []
 for i in range(n_targs):
-    source_target_latents = torch.cat(
-        [GV1_features, GV_targ_features[i, :].unsqueeze(0)], dim=0)
-    V1_deformed = func.forward(V1_copy, source_target_latents)
+    latent_code = torch.cat([GV1_features, GV_targ_features[i, :].unsqueeze(0)], dim=0)
+    output = output_path[:-4] + "_" + str(i+1).zfill(2) + ".obj"
 
-    # Move to CPU
-    results.append(torch.from_numpy(V1_deformed.detach().cpu().numpy()))
+    save_results(V1, F1, E1, V_targs[i], F_targs[i], func, param_id1.tolist(), \
+            param_id_targs[i].tolist(), output, device, latent_code)
 
-for i, deformed_result in enumerate(results):
-    V1_copy_origin = V1.clone()
-    pyDeform.SolveLinear(V1_copy_origin, F1, E1, src_to_src, deformed_result, 1, 1)
-    pyDeform.DenormalizeByTemplate(V1_copy_origin, param_id_targs[i].tolist())
-
-    target_output_path = output_path[:-4] + "_" + str(i+1).zfill(2) + ".obj"
-    pyDeform.SaveMesh(target_output_path, V1_copy_origin, F1)
