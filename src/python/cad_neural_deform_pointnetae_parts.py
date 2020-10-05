@@ -11,12 +11,11 @@ from layers.graph_loss_layer import GraphLossLayerPairs
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
 from layers.pointnet_ae import Network
-from util.load_data import compute_deformation_pairs, load_neural_deform_data
-from util.save_data import save_results, save_snapshot_results
+from util.load_data import compute_deformation_pairs, load_neural_deform_seg_data
+from util.save_data import save_seg_results, save_snapshot_results
 import pyDeform
 import numpy as np
 import argparse
-import random
 from types import SimpleNamespace
 
 parser = argparse.ArgumentParser(description='Rigid Deformation.')
@@ -36,8 +35,9 @@ save_path = args.save_path
 device = torch.device(args.device)
 
 # Load meshes.
-(V_all, F_all, E_all, V_surf_all), (GV_all, GE_all, GV_origin_all, GV_device_all) = \
-        load_neural_deform_data(args.input, device)
+(V_parts_all, V_parts_combined_all, F_all, E_all, V_surf_all), \
+        (GV_parts_combined_all, GE_all, GV_origin_all, GV_parts_device_all) = \
+        load_neural_deform_seg_data(args.input, device)
 
 # Compute all deformation pairs.
 deformation_pairs = compute_deformation_pairs(args.all_pairs, len(args.input))
@@ -50,14 +50,21 @@ pointnet.eval()
 pointnet = pointnet.to(device)
 
 # Deformation losses layer.
-graph_loss = GraphLossLayerPairs(V_all, F_all, GV_all, GE_all, rigidity, device)
+graph_loss = GraphLossLayerPairs(V_parts_combined_all, F_all, GV_parts_combined_all, GE_all, rigidity, device)
 param_ids = graph_loss.param_ids
 reverse_loss = ReverseLossLayer()
 
 # Flow layer.
-func = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
-func.to(device)
-optimizer = optim.Adam(func.parameters(), lr=1e-3)
+deformers = []
+num_parts = len(V_parts_all[0])
+for i in range(num_parts):
+    func = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
+    func.to(device)
+    deformers.append(func)
+all_deformer_params = []
+for deformer in deformers:
+    all_deformer_params += list(deformer.parameters())
+optimizer = optim.Adam(all_deformer_params, lr=1e-3)
 
 # Prepare PointNet input.
 GV_pointnet_inputs = torch.stack(V_surf_all, dim=0).to(device)
@@ -76,25 +83,28 @@ for it in range(int(args.num_iter)):
     loss = 0
     for i, (src, targ) in enumerate(deformation_pairs):
         # Compute and integrate velocity field for deformation.
-        GV_deformed = func.forward(GV_device_all[src], source_target_latents[i])
-        
+        latent_codes = source_target_latents[i]
+        deformed_parts = []
+        for j in range(num_parts):
+            deformed_parts.append(deformers[j].forward(GV_parts_device_all[src][j], latent_codes))
+        GV_deformed = torch.cat(deformed_parts, dim=0)
+
         # Compute losses.
         loss_forward = graph_loss(
-            GV_deformed, GE_all[src], GV_all[targ], GE_all[targ], src, targ, 0)
+            GV_deformed, GE_all[src], GV_parts_combined_all[targ], GE_all[targ], src, targ, 0)
         loss_backward = reverse_loss(GV_deformed, GV_origin_all[targ], device)
         loss += loss_forward + loss_backward 
         print('iter= %d, source_index= %d, target_index= %d, loss_forward= %.6f, loss_backward= %.6f'
-              % (it, src, targ, np.sqrt(loss_forward.item() / GV_all[src].shape[0]),
-                 np.sqrt(loss_backward.item() / GV_all[targ].shape[0])))
-        
+              % (it, src, targ, np.sqrt(loss_forward.item() / GV_parts_combined_all[src].shape[0]),
+                 np.sqrt(loss_backward.item() / GV_parts_combined_all[targ].shape[0])))
+
         if it % 50 == 0:
-            with torch.no_grad():
-                print("Saving snapshot...")
-                output = output_prefix + "_snapshot_" + str(it).zfill(4) + "_" + \
-                    str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
-                save_snapshot_results(V_all[src], GV_deformed, F_all[src], E_all[src], \
-                        V_all[targ], F_all[targ], param_ids[src].tolist(), \
-                        param_ids[targ].tolist(), output)
+            print("Saving snapshot...")
+            output = output_prefix + "_snapshot_" + str(it).zfill(4) + "_" + \
+                str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
+            save_snapshot_results(V_parts_combined_all[src], GV_deformed, F_all[src], E_all[src], \
+                    V_parts_combined_all[targ], F_all[targ], param_ids[src].tolist(), \
+                    param_ids[targ].tolist(), output)
     loss.backward()
     optimizer.step()
 
@@ -105,6 +115,7 @@ if save_path != '':
 for i, (src, targ) in enumerate(deformation_pairs):
     latent_code = source_target_latents[i]
     output = output_prefix + "_" + str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
-    save_results(V_all[src], F_all[src], E_all[src], V_all[targ], F_all[targ], func, \
+    save_seg_results(V_parts_all[src], V_parts_combined_all[src], F_all[src], E_all[src], \
+            V_parts_combined_all[targ], F_all[targ], deformers, \
             param_ids[src].tolist(), param_ids[targ].tolist(), output, device, latent_code)
 
