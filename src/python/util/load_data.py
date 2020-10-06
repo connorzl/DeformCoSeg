@@ -34,6 +34,37 @@ def load_mesh(mesh_path, intermediate=10000, final=2048):
     return V, F, E, V_sample
 
 
+def load_segmentation(mesh_paths):
+    files_dir = os.path.dirname(mesh_paths[0])
+    part_sizes_all = []
+
+    for i in range(len(mesh_paths)):
+        segmentation_file = "segmentation_" + str(i).zfill(2) + ".txt"
+        segmentation_file = os.path.join(files_dir, segmentation_file)
+        
+        # Count number of labels, assume labels start from 0.
+        curr_part_sizes = []
+        curr_label = -1
+        curr_size = 0
+        with open(segmentation_file, "r") as f:
+            lines = [line.rstrip("\n").split(",") for line in f]
+            for i, line in enumerate(lines):
+                label = int(line[1])
+                if i == 0: 
+                    curr_label = label
+                    curr_size = 1
+                elif curr_label == label:
+                    curr_size += 1
+                else:
+                    curr_part_sizes.append(curr_size)
+                    curr_label = label
+                    curr_size = 1
+            curr_part_sizes.append(curr_size)
+        part_sizes_all.append(curr_part_sizes)        
+
+    return part_sizes_all
+
+
 def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
     # Load meshes.
     V_all = []
@@ -61,37 +92,6 @@ def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
     return (V_all, F_all, E_all, V_surf_all), (GV_all, GE_all)
 
 
-def load_segmentation(mesh_path, i, V):
-    files_dir = os.path.dirname(mesh_path)
-    segmentation_file = "segmentation_" + str(i).zfill(2) + ".txt"
-    segmentation_file = os.path.join(files_dir, segmentation_file)
-    
-    # Count number of labels, assume labels start from 0.
-    labels_set = set()
-    with open(segmentation_file, "r") as f:
-        lines = [line.rstrip("\n").split(",") for line in f]
-        for line in lines:
-            label = int(line[1])
-            labels_set.add(label)
-
-    # Maps each part to a list of its vertices
-    V_parts = [[] for _ in labels_set]
-
-    with open(segmentation_file, "r") as f:
-        lines = [line.rstrip("\n").split(",") for line in f]
-        labels = np.zeros((V.shape[0], 1))
-        for line in lines:
-            index = int(line[0]) - 1
-            label = int(line[1])
-            V_parts[label].append(V[index])
-    
-    for i in range(len(V_parts)):
-        V_parts[i] = np.asarray(V_parts[i]).astype(np.float32)
-    
-    V_parts_combined = np.concatenate(V_parts, axis=0)
-    return V_parts_combined, V_parts
-
-
 def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=2048):
     V_parts_all = []
     V_parts_combined_all = []
@@ -117,6 +117,9 @@ def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=20
         # Graph vertices and edges for computing forward fitting loss.
         GV_parts_combined_all.append(V_parts_combined_all[-1].clone())
         GE_all.append(E_all[-1].clone())
+
+        # Need to return a mapping from each index of GV_parts_combined_all to label.
+        """
         # Graph vertices origins for computing backward fitting loss.
         GV_origin_all.append(GV_parts_combined_all[-1].clone())
 
@@ -125,7 +128,8 @@ def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=20
         for j in range(len(V_parts)):
             GV_parts_device.append(V_parts[j].to(device))
         GV_parts_device_all.append(GV_parts_device)
+        """
     return (V_parts_all, V_parts_combined_all, F_all, E_all, V_surf_all), \
-            (GV_parts_combined_all, GE_all, GV_origin_all, GV_parts_device_all)
+            (GV_parts_combined_all, GE_all)
 
 
