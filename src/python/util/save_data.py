@@ -94,13 +94,11 @@ def save_seg_results(V_parts, V, F, E, V_targ, F_targ, deformers, param_id_src, 
 
 
 def save_snapshot_results(V, V_deformed, F, E, V_targ, F_targ, param_id_src, param_id_targ, output_path):
-    V_copy = V.clone()
-    V_origin = V.clone()
-    V_deformed = torch.from_numpy(V_deformed.detach().cpu().numpy())
-    src_to_src = torch.from_numpy(np.array([i for i in range(V_copy.shape[0])]).astype('int32'))
+    V_origin = V.detach().clone()
+    V_deformed_copy = V_deformed.detach().clone().cpu()
+    src_to_src = torch.from_numpy(np.array([i for i in range(V.shape[0])]).astype('int32'))
     
-    pyDeform.NormalizeByTemplate(V_copy, param_id_src)
-    pyDeform.SolveLinear(V_origin, F, E, src_to_src, V_deformed, 1, 1)
+    pyDeform.SolveLinear(V_origin, F, E, src_to_src, V_deformed_copy, 1, 1)
     pyDeform.DenormalizeByTemplate(V_origin, param_id_targ)
     
     # Render the source, target, and result.

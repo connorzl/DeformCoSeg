@@ -12,7 +12,6 @@ print("torchdiffeq library location:", os.path.dirname(torchdiffeq.__file__))
 class ODEFuncPointNet(nn.Module):
     def __init__(self, k=1):
         super(ODEFuncPointNet, self).__init__()
-        nlin = nn.LeakyReLU()
         m = 50
         nlin = nn.LeakyReLU()
         self.net = nn.Sequential(
@@ -80,7 +79,6 @@ class NeuralFlowModel(nn.Module):
                                'Use .update_latents() to update the source and target latents.')
         latent_val = self.latent_at_t(t)
         flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
-        flow *= torch.norm(self.latent_sequence[1, :] - self.latent_sequence[0, :])
         return flow
 
 

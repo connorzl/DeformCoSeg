@@ -98,24 +98,31 @@ for it in range(int(args.num_iter)):
               % (it, src, targ, np.sqrt(loss_forward.item() / GV_parts_combined_all[src].shape[0]),
                  np.sqrt(loss_backward.item() / GV_parts_combined_all[targ].shape[0])))
 
-        if it % 50 == 0:
-            print("Saving snapshot...")
-            output = output_prefix + "_snapshot_" + str(it).zfill(4) + "_" + \
-                str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
-            save_snapshot_results(V_parts_combined_all[src], GV_deformed, F_all[src], E_all[src], \
-                    V_parts_combined_all[targ], F_all[targ], param_ids[src].tolist(), \
-                    param_ids[targ].tolist(), output)
+        if it % 50 == 0 or it == int(args.num_iter) - 1:
+            GV_deformed_copy = GV_deformed.detach().clone()
+            if it % 50 == 0:
+                print("Saving snapshot...")
+                output = output_prefix + "_snapshot_" + str(it).zfill(4) + "_" + \
+                    str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
+            elif it == int(args.num_iter) - 1:
+                print("Saving result...")
+                output = output_prefix + "_" + str(it).zfill(4) + "_" + \
+                    str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
+            with torch.no_grad():
+                save_snapshot_results(V_parts_combined_all[src], GV_deformed_copy, F_all[src], E_all[src], \
+                        V_parts_combined_all[targ], F_all[targ], param_ids[src].tolist(), \
+                        param_ids[targ].tolist(), output)
     loss.backward()
     optimizer.step()
 
 # Evaluate final result.
 if save_path != '':
     torch.save({'func': func, 'optim': optimizer}, save_path)
-
+"""
 for i, (src, targ) in enumerate(deformation_pairs):
     latent_code = source_target_latents[i]
     output = output_prefix + "_" + str(src).zfill(2) + "_" + str(targ).zfill(2) + ".obj"
     save_seg_results(V_parts_all[src], V_parts_combined_all[src], F_all[src], E_all[src], \
             V_parts_combined_all[targ], F_all[targ], deformers, \
             param_ids[src].tolist(), param_ids[targ].tolist(), output, device, latent_code)
-
+"""

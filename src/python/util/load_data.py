@@ -42,10 +42,8 @@ def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
     E_all = []
     GV_all = []
     GE_all = []
-    GV_origin_all = []
-    GV_device_all = []
     for mesh_path in mesh_paths:
-        V, F, E, V_surf = load_mesh(mesh_path)
+        V, F, E, V_surf = load_mesh(mesh_path, intermediate, final)
         V = torch.from_numpy(V)
         F = torch.from_numpy(F)
         E = torch.from_numpy(E)
@@ -59,12 +57,8 @@ def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
         # Graph vertices and edges for deformation.
         GV_all.append(V_all[-1].clone())
         GE_all.append(E_all[-1].clone())
-        # Graph vertices origins for computing losses.
-        GV_origin_all.append(GV_all[-1].clone())
-        # Graph vertices on device for deformation.
-        GV_device_all.append(GV_all[-1].to(device))
 
-    return (V_all, F_all, E_all, V_surf_all), (GV_all, GE_all, GV_origin_all, GV_device_all)
+    return (V_all, F_all, E_all, V_surf_all), (GV_all, GE_all)
 
 
 def load_segmentation(mesh_path, i, V):

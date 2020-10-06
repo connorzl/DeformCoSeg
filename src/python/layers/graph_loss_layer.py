@@ -140,7 +140,7 @@ class GraphLossLayerPairs(nn.Module):
                                             self.rigidity2, self.param_ids[index_1], self.param_ids[index_2])
 
         return GraphLossFunction.apply(V2, E2,
-                                        self.rigidity2, self.param_id_targs[index_2], self.param_ids[index_1])
+                                        self.rigidity2, self.param_ids[index_2], self.param_ids[index_1])
 
 
 def Finalize(src_V, src_F, src_E, src_to_graph, graph_V, rigidity, param_id):
