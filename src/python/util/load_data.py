@@ -13,7 +13,7 @@ def compute_deformation_pairs(all_pairs, n):
         for i in range(n):
             for j in range(i + 1, n):
                 pairs.append((i, j))
-                #pairs.append((j, i))
+                pairs.append((j, i))
     else:
         for i in range(1, n):
             pairs.append((0, i))

@@ -11,6 +11,7 @@ from layers.graph_loss_layer import GraphLossLayerPairs
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.flow import FlowNetwork
 from layers.pointnet_ae import Network
+import layers.pointnet_plus
 from util.load_data import compute_deformation_pairs, load_neural_deform_data, load_segmentation
 from util.save_data import save_snapshot_results
 import pyDeform
@@ -67,7 +68,8 @@ for i, GV in enumerate(GV_all):
 deformers = []
 num_parts = len(GV_parts_device_all[0])
 for part in GV_parts_device_all:
-    func = FlowNetwork("mlp")
+    #func = FlowNetwork("mlp")
+    func = FlowNetwork("pointnet_plus")
     func.to(device)
     deformers.append(func)
 
