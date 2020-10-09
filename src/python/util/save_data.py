@@ -32,67 +32,6 @@ def render_obj(out, v, f, delete_img=False, flat_shading=True):
     subprocess.run(cmd, shell=True)
 
 
-def save_results(V, F, E, V_targ, F_targ, func, param_id_src, param_id_targ, \
-        output_path, device, latent_code=None):
-    V_copy = V.clone()
-    src_to_src = torch.from_numpy(np.array([i for i in range(V_copy.shape[0])]).astype('int32'))
-
-    pyDeform.NormalizeByTemplate(V_copy, param_id_src)
-    V_copy = V_copy.to(device)
-    if latent_code == None:
-        V_deformed = func.forward(V_copy)
-    else:
-        V_deformed = func.forward(V_copy, latent_code)
-    V_deformed = torch.from_numpy(V_deformed.detach().cpu().numpy())
-
-    V_origin = V.clone()
-    pyDeform.SolveLinear(V_origin, F, E, src_to_src, V_deformed, 1, 1)
-    pyDeform.DenormalizeByTemplate(V_origin, param_id_targ)
-    
-    # Render the source, target, and result.
-    src_output = output_path[:-4] + "_src.png" 
-    render_obj(src_output, V, F + 1)
-    targ_output = output_path[:-4] + "_targ.png"
-    render_obj(targ_output, V_targ, F_targ + 1)
-    deformed_output = output_path[:-4] + "_deformed.png"
-    render_obj(deformed_output, V_origin, F + 1)
-    
-    # Save obj file.
-    pyDeform.SaveMesh(output_path, V_origin, F)
-
-
-def save_seg_results(V_parts, V, F, E, V_targ, F_targ, deformers, param_id_src, param_id_targ, \
-        output_path, device, latent_code=None):
-    V_copy = V.clone()
-    V_origin = V.clone()
-    src_to_src = torch.from_numpy(np.array([i for i in range(V_copy.shape[0])]).astype('int32'))
-
-    pyDeform.NormalizeByTemplate(V_copy, param_id_src)
-    deformed_parts = []
-    for i, part in enumerate(V_parts):
-        part_device = part.to(device)
-        if latent_code == None:
-            deformed_parts.append(deformers[i].forward(part_device))
-        else:
-            deformed_parts.append(deformers[i].forward(part_device, latent_code))
-    V_deformed = torch.cat(deformed_parts, dim=0)
-    V_deformed = torch.from_numpy(V_deformed.detach().cpu().numpy())
-
-    pyDeform.SolveLinear(V_origin, F, E, src_to_src, V_deformed, 1, 1)
-    pyDeform.DenormalizeByTemplate(V_origin, param_id_targ)
-    
-    # Render the source, target, and result.
-    src_output = output_path[:-4] + "_src.png" 
-    render_obj(src_output, V, F + 1)
-    targ_output = output_path[:-4] + "_targ.png"
-    render_obj(targ_output, V_targ, F_targ + 1)
-    deformed_output = output_path[:-4] + "_deformed.png"
-    render_obj(deformed_output, V_origin, F + 1)
-    
-    # Save obj file.
-    pyDeform.SaveMesh(output_path, V_origin, F)
-
-
 def save_snapshot_results(V, V_deformed, F, E, V_targ, F_targ, param_id_src, param_id_targ, output_path):
     V_origin = V.detach().clone()
     V_deformed_copy = V_deformed.detach().clone().cpu()
@@ -100,6 +39,7 @@ def save_snapshot_results(V, V_deformed, F, E, V_targ, F_targ, param_id_src, par
     
     pyDeform.SolveLinear(V_origin, F, E, src_to_src, V_deformed_copy, 1, 1)
     pyDeform.DenormalizeByTemplate(V_origin, param_id_targ)
+    #pyDeform.DenormalizeByTemplate(V_deformed_copy, param_id_targ)
     
     # Render the source, target, and result.
     src_output = output_path[:-4] + "_src.png" 

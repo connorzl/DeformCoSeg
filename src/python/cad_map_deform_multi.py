@@ -9,6 +9,7 @@ import torch.optim as optim
 import torch
 from layers.graph_loss_layer import GraphLossLayerPairs
 from layers.reverse_loss_layer import ReverseLossLayer
+from layers.neuralode_conditional import NeuralFlowDeformer
 from layers.flow import FlowNetwork
 from layers.pointnet_ae import Network
 import layers.pointnet_plus
@@ -62,8 +63,9 @@ for GV in GV_all:
     GV_device_all.append(GV.unsqueeze(0).to(device))
 
 # Flow layer.
-#func = FlowNetwork("mlp")
-func = FlowNetwork("pointnet_plus")
+#func = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
+func = FlowNetwork("mlp")
+#func = FlowNetwork("pointnet_plus")
 func.to(device)
 optimizer = optim.Adam(func.parameters(), lr=1e-3)
 
@@ -72,13 +74,19 @@ GV_pointnet_inputs = torch.stack(V_surf_all, dim=0).to(device)
 _, GV_features = pointnet(GV_pointnet_inputs)
 GV_features = GV_features.detach()
 
+# Prepare latent codes for conditioning.
+source_target_latents = []
+for (src, targ) in deformation_pairs:
+    source_target_latents.append(torch.stack([GV_features[src], GV_features[targ]], dim=0))
+
 print("Starting training!")
 for it in range(int(args.num_iter)):
     optimizer.zero_grad()
 
     loss = 0
     for i, (src, targ) in enumerate(deformation_pairs):
-        GV_deformed = func.forward(GV_device_all[src], GV_features[src], GV_features[targ])
+        flow = func.forward(GV_device_all[src], GV_features[src], GV_features[targ])
+        GV_deformed = GV_device_all[src] + flow
         GV_deformed = GV_deformed.squeeze(0)
 
         # Compute losses.
