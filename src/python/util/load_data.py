@@ -34,12 +34,12 @@ def load_mesh(mesh_path, intermediate=10000, final=2048):
     return V, F, E, V_sample
 
 
-def load_segmentation(mesh_paths):
+def load_segmentation(mesh_paths, indices):
     files_dir = os.path.dirname(mesh_paths[0])
     part_sizes_all = []
 
     for i in range(len(mesh_paths)):
-        segmentation_file = "segmentation_" + str(i).zfill(2) + ".txt"
+        segmentation_file = "segmentation_" + str(indices[i]).zfill(2) + ".txt"
         segmentation_file = os.path.join(files_dir, segmentation_file)
         
         # Count number of labels, assume labels start from 0.

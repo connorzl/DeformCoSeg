@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import sys, os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import pointnet_plus
+import pointnet_plus_resid
+import pointnet_plus_frame
 
 class FlowMLP(nn.Module):
 
@@ -41,8 +42,10 @@ class FlowNetwork(nn.Module):
 
         if network_type == 'mlp':
             self.net = FlowMLP()
-        elif network_type == 'pointnet_plus':
-            self.net = pointnet_plus.PointNet2()
+        elif network_type == 'pointnet_plus_resid':
+            self.net = pointnet_plus_resid.PointNet2()
+        elif network_type == 'pointnet_plus_frame':
+            self.net = pointnet_plus_frame.PointNet2()
         else:
             raise ValueError('ERROR: unknown network_type: %s!' % network_type)
 

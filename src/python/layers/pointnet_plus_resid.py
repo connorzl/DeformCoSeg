@@ -22,7 +22,7 @@ class PointNet2(pl.LightningModule):
                 npoint=1024,
                 radius=0.1,
                 nsample=32,
-                mlp=[2048, 1024, 512, 256],
+                mlp=[1024, 1024, 512, 256],
                 bn=self.bn,
                 use_xyz=True,
             )
@@ -32,7 +32,7 @@ class PointNet2(pl.LightningModule):
                 npoint=256,
                 radius=0.2,
                 nsample=32,
-                mlp=[256, 128, 128, 128],
+                mlp=[256, 256, 256, 128],
                 bn=self.bn,
                 use_xyz=True,
             )
@@ -59,7 +59,7 @@ class PointNet2(pl.LightningModule):
         )
 
         self.FP_modules = nn.ModuleList()
-        self.FP_modules.append(PointnetFPModule(mlp=[128 + 2048, 128, 128, 128]))
+        self.FP_modules.append(PointnetFPModule(mlp=[128 + 1024, 128, 128, 128]))
         self.FP_modules.append(PointnetFPModule(mlp=[256 + 256, 256, 128]))
         self.FP_modules.append(PointnetFPModule(mlp=[256 + 128, 256, 256]))
         self.FP_modules.append(PointnetFPModule(mlp=[512 + 256, 256, 256]))
@@ -68,7 +68,7 @@ class PointNet2(pl.LightningModule):
             nn.Conv1d(128, 128, kernel_size=1, bias=False),
             nn.ReLU(True),
             nn.Dropout(0.5),
-            nn.Conv1d(128, 3, kernel_size=1),
+            nn.Conv1d(128, 12, kernel_size=1),
         )
 
     def _break_up_pc(self, pc):

@@ -12,7 +12,7 @@ from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
 from layers.pointnet_ae import Network
 from util.load_data import compute_deformation_pairs, load_neural_deform_data
-from util.save_data import save_results, save_snapshot_results
+from util.save_data import save_snapshot_results
 import pyDeform
 import numpy as np
 import argparse
@@ -84,7 +84,8 @@ for it in range(int(args.num_iter)):
     for i, (src, targ) in enumerate(deformation_pairs):
         # Compute and integrate velocity field for deformation.
         GV_deformed = func.forward(GV_device_all[src], source_target_latents[i])
-        
+        #GV_deformed = GV_device_all[src] + resid
+
         # Compute losses.
         loss_forward = graph_loss(
             GV_deformed, GE_all[src], GV_all[targ], GE_all[targ], param_ids[src], param_ids[targ], 0)

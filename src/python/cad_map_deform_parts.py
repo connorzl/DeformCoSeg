@@ -11,7 +11,7 @@ from layers.graph_loss_layer import GraphLossLayerPairs
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.flow import FlowNetwork
 from layers.pointnet_ae import Network
-import layers.pointnet_plus
+import layers.pointnet_plus_frame
 from util.load_data import compute_deformation_pairs, load_neural_deform_data, load_segmentation
 from util.save_data import save_snapshot_results
 import pyDeform
@@ -38,7 +38,7 @@ device = torch.device(args.device)
 # Load meshes.
 (V_all, F_all, E_all, V_surf_all), (GV_all, GE_all) = \
         load_neural_deform_data(args.input, device)
-part_sizes_all = load_segmentation(args.input)
+part_sizes_all = load_segmentation(args.input, [0, 1, 2, 3, 4])
 
 # Compute all deformation pairs.
 deformation_pairs = compute_deformation_pairs(args.all_pairs, len(args.input))
@@ -59,6 +59,8 @@ reverse_loss = ReverseLossLayer()
 GV_origin_all = []
 GV_parts_device_all = []
 for i, GV in enumerate(GV_all):
+    print("GV:", GV.shape)
+    print("part_sizes_all:", part_sizes_all[i])
     GV_origin_all.append(GV.clone())
     GV_parts_device = torch.split(GV.clone(), part_sizes_all[i], dim=0)
     GV_parts_device = [part.to(device) for part in GV_parts_device]
@@ -69,7 +71,7 @@ deformers = []
 num_parts = len(GV_parts_device_all[0])
 for part in GV_parts_device_all:
     #func = FlowNetwork("mlp")
-    func = FlowNetwork("pointnet_plus")
+    func = FlowNetwork("pointnet_plus_frame")
     func.to(device)
     deformers.append(func)
 
@@ -83,6 +85,28 @@ GV_pointnet_inputs = torch.stack(V_surf_all, dim=0).to(device)
 _, GV_features = pointnet(GV_pointnet_inputs)
 GV_features = GV_features.detach()
 
+def extract_rot_trans(frame):
+    """
+        Input: 1 x 12
+        Output: 1 x 3 x 3, 1 x 3 x 1
+    """
+    rot = frame[:, 0:9].unsqueeze(1)
+    rot = torch.reshape(rot, (1, 3, 3))
+
+    (U, S, V) = torch.svd(rot)
+    VT = torch.transpose(V, 1, 2)
+    sign = torch.sign(torch.det(torch.matmul(U, VT)))
+    
+    S_rot = S.clone()
+    S_rot[:, 0] = 1.0
+    S_rot[:, 1] = 1.0
+    S_rot[:, 2] = sign
+    S_rot = torch.diag_embed(S_rot)
+    
+    rot = torch.matmul(torch.matmul(U, S_rot), VT)
+    trans = frame[:, 9:12].unsqueeze(2)
+    return rot, trans
+
 print("Starting training!")
 for it in range(int(args.num_iter)):
     optimizer.zero_grad()
@@ -92,9 +116,20 @@ for it in range(int(args.num_iter)):
         # Perform deformation.
         deformed_parts = []
         for j in range(num_parts):
-            V_src = GV_parts_device_all[src][j].unsqueeze(0)
-            deformed = deformers[j].forward(V_src, GV_features[src], GV_features[targ])
-            deformed_parts.append(torch.squeeze(deformed, dim=0))
+            V_src = GV_parts_device_all[src][j]
+            V_targ = GV_parts_device_all[targ][j]
+            frame_src = deformers[j].forward(V_src.unsqueeze(0), GV_features[src])
+            frame_targ = deformers[j].forward(V_targ.unsqueeze(0), GV_features[targ])
+            
+            # Extract 3D coordinate frame + origin for source part and target part.
+            src_rot, src_trans = extract_rot_trans(frame_src) 
+            targ_rot, targ_trans = extract_rot_trans(frame_targ) 
+            
+            # Transform source vertices to world coordinates.
+            V_deformed = torch.unsqueeze(V_src, dim=2)
+            V_deformed = torch.matmul(torch.transpose(src_rot, 1, 2), V_deformed - src_trans)
+            V_deformed = torch.matmul(targ_rot, V_deformed) + targ_trans
+            deformed_parts.append(torch.squeeze(V_deformed, dim=2))
         GV_deformed = torch.cat(deformed_parts, dim=0)
 
         # Compute losses.

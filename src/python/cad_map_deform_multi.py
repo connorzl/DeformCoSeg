@@ -11,7 +11,7 @@ from layers.graph_loss_layer import GraphLossLayerPairs
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.flow import FlowNetwork
 from layers.pointnet_ae import Network
-import layers.pointnet_plus
+import layers.pointnet_plus_resid
 from util.load_data import compute_deformation_pairs, load_neural_deform_data
 from util.save_data import save_snapshot_results
 import pyDeform

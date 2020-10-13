@@ -8,7 +8,7 @@ kdtree_index_pc	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/u
 load_mesh	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_mesh(mesh_path, intermediate=10000, final=2048):$/;"	f	language:Python
 load_neural_deform_data	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):$/;"	f	language:Python
 load_neural_deform_seg_data	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=2048):$/;"	f	language:Python
-load_segmentation	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_segmentation(mesh_paths):$/;"	f	language:Python
+load_segmentation	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_segmentation(mesh_paths, indices):$/;"	f	language:Python
 render_obj	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def render_obj(out, v, f, delete_img=False, flat_shading=True):$/;"	f	language:Python
 sample_faces	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def sample_faces(vertices, faces, n_samples=10**4):$/;"	f	language:Python
 save_snapshot_results	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def save_snapshot_results(V, V_deformed, F, E, V_targ, F_targ, param_id_src, param_id_targ, output_path):$/;"	f	language:Python
