@@ -5,7 +5,7 @@ import sys, os
 
 
 class PointNet(nn.Module):
-    def __init__(self):
+    def __init__(self, latent_size=1024):
         super(PointNet, self).__init__()
         
         self.conv1 = nn.Conv1d(3, 64, 1)
@@ -18,8 +18,8 @@ class PointNet(nn.Module):
         self.bn3 = nn.BatchNorm1d(256)
         self.bn4 = nn.BatchNorm1d(1024)
 
-        self.fc1 = nn.Linear(1024, 1024)
-        self.bn5 = nn.BatchNorm1d(1024)
+        self.fc1 = nn.Linear(1024, latent_size)
+        self.bn5 = nn.BatchNorm1d(latent_size)
 
     """
         Input: B x N x 3
@@ -42,11 +42,11 @@ class PointNet(nn.Module):
 
 class FCDecoder(nn.Module):
 
-    def __init__(self, num_point=2048):
+    def __init__(self, num_point=2048, latent_size=1024):
         super(FCDecoder, self).__init__()
         print('Using FCDecoder-NoBN!')
 
-        self.mlp1 = nn.Linear(1024, 1024)
+        self.mlp1 = nn.Linear(latent_size, 1024)
         self.mlp2 = nn.Linear(1024, 1024)
         self.mlp3 = nn.Linear(1024, num_point*3)
 
@@ -61,56 +61,16 @@ class FCDecoder(nn.Module):
         return net
 
 
-class FCUpconvDecoder(nn.Module):
-
-    def __init__(self, num_point=2048):
-        super(FCUpconvDecoder, self).__init__()
-        print('Using FCUpconvDecoder-NoBN!')
-
-        self.mlp1 = nn.Linear(1024, 1024)
-        self.mlp2 = nn.Linear(1024, 1024)
-        self.mlp3 = nn.Linear(1024, 1024*3)
-
-        self.deconv1 = nn.ConvTranspose2d(1024, 1024, 2, 1)
-        self.deconv2 = nn.ConvTranspose2d(1024, 512, 3, 1)
-        self.deconv3 = nn.ConvTranspose2d(512, 256, 4, 2)
-        self.deconv4 = nn.ConvTranspose2d(256, 128, 5, 3)
-        self.deconv5 = nn.ConvTranspose2d(128, 3, 1, 1)
-
-    def forward(self, feat):
-        batch_size = feat.shape[0]
-
-        fc_net = feat
-        fc_net = torch.relu(self.mlp1(fc_net))
-        fc_net = torch.relu(self.mlp2(fc_net))
-        fc_net = self.mlp3(fc_net).view(batch_size, -1, 3)
-
-        upconv_net = feat.view(batch_size, -1, 1, 1)
-        upconv_net = torch.relu(self.deconv1(upconv_net))
-        upconv_net = torch.relu(self.deconv2(upconv_net))
-        upconv_net = torch.relu(self.deconv3(upconv_net))
-        upconv_net = torch.relu(self.deconv4(upconv_net))
-        upconv_net = self.deconv5(upconv_net).view(batch_size, 3, -1).permute(0, 2, 1)
-        
-        net = torch.cat([fc_net, upconv_net], dim=1)
-
-        return net
-
-
 class Network(nn.Module):
 
-    def __init__(self, conf):
+    def __init__(self, conf, latent_size):
         super(Network, self).__init__()
         self.conf = conf
 
-        self.encoder = PointNet()
+        self.encoder = PointNet(latent_size=latent_size)
 
         if conf.decoder_type == 'fc':
-            self.decoder = FCDecoder(num_point=conf.num_point)
-
-        elif conf.decoder_type == 'fc_upconv':
-            self.decoder = FCUpconvDecoder(num_point=conf.num_point)
-
+            self.decoder = FCDecoder(num_point=conf.num_point, latent_size=latent_size)
         else:
             raise ValueError('ERROR: unknown decoder_type %s!' % decoder_type)
 

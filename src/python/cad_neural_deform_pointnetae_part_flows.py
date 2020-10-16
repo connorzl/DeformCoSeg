@@ -12,6 +12,7 @@ from layers.graph_loss_layer import GraphLossLayerBatch
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
 from layers.pointnet_ae import Network
+from layers.pointnet_plus_mask import PointNet2
 from torch.utils.data import DataLoader
 from util.load_data import compute_deformation_pairs, load_neural_deform_data
 from util.save_data import save_snapshot_results
@@ -51,6 +52,8 @@ train_sampler = RandomPairSampler(train_dataset)
 train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False,
                           drop_last=True, sampler=train_sampler)
 
+##################### Modify the following ##################################
+
 # PointNet layer.
 pointnet_conf = SimpleNamespace(
     num_point=2048, decoder_type='fc', loss_type='emd')
@@ -61,6 +64,10 @@ pointnet.eval()
 pointnet = pointnet.to(device)
 
 reverse_loss = ReverseLossLayer()
+
+# Mask Network.
+NUM_PARTS = 2
+mask_network = PointNet2(NUM_PARTS).to(device)
 
 # Flow layer.
 deformer = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
@@ -93,16 +100,29 @@ for epoch in range(epochs):
         GV_tar_origin = GV_tar.clone()
         GV_src_device = GV_src.to(device)
 
+        # Predict masks.
+        GV_features_src = GV_features[0].view(1, 1, -1)
+        GV_features_src = GV_features_src.repeat(batchsize, GV_src_device.shape[1], 1)
+        mask_input = torch.cat([GV_src_device, GV_features_src], dim=2)
+        predicted_mask = mask_network(mask_input).squeeze(0)
+            
         # Deform and compute losses, assuming batchsize = 1.
         GV_deformed = deformer.forward(GV_src_device.squeeze(0), GV_features)
+        flow = GV_deformed - GV_src_device.squeeze(0)
+
+        # Compute V x 3 x 1 times V x 1 x K
+        predicted_mask = predicted_mask.unsqueeze(1)
+        flow = flow.unsqueeze(2) 
+        GV_deformed = torch.matmul(flow, predicted_mask).sum(dim=2)
+
         loss_forward = graph_loss(
             GV_deformed, GE_src, GV_tar, GE_tar, src_param_id, tar_param_id, 0)
         loss_backward = reverse_loss(GV_deformed, GV_tar_origin, device)
         loss = loss_forward + loss_backward
        
         # Save results.
-        print("Epoch: {}, Batch: {}, Shape_Pair: ({}, {}),"
-              "Loss_forward: {: .6f}, Loss_backward: {: .6f}".format(
+        print("Epoch: {} | Batch: {} | Shape_Pair: ({}, {}) | "
+              "Loss_forward: {: .6f} | Loss_backward: {: .6f}".format(
             epoch, batch_idx, int(i), int(j), np.sqrt(loss_forward.item() / GV_src.shape[1]),
             np.sqrt(loss_backward.item() / GV_tar.shape[1])))
 

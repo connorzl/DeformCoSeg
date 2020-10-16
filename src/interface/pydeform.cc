@@ -17,6 +17,7 @@ PYBIND11_MODULE(pyDeform, m) {
 	m.def("SaveMesh", &SaveMesh);
 
 	m.def("InitializeDeformTemplate", &InitializeDeformTemplate);
+	m.def("ClearOldestParams", &ClearOldestParams);
 	m.def("NormalizeByTemplate", &NormalizeByTemplate);
 	m.def("DenormalizeByTemplate", &DenormalizeByTemplate);
 	m.def("SolveLinear", &SolveLinear);

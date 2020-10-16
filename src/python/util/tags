@@ -1,14 +1,30 @@
 !_TAG_FILE_SORTED	2	/0=unsorted, 1=sorted, 2=foldcase/
 binary_tree_pooling	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def binary_tree_pooling(batch_data, k=2, num_points=None):$/;"	f	language:Python
-compute_deformation_pairs	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def compute_deformation_pairs(all_pairs, n):$/;"	f	language:Python
+combinations_to_idx	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def combinations_to_idx(self, i, j):$/;"	m	language:Python	class:SAPIENBase
+compute_deformation_pairs	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def compute_deformation_pairs(src_idx, n):$/;"	f	language:Python
 export_obj	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def export_obj(out, v, f):$/;"	f	language:Python
 fps	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def fps(x, num_points, idx=None):$/;"	f	language:Python
+get_pairs	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def get_pairs(self, i, j):$/;"	m	language:Python	class:SAPIENMesh
+get_single	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def get_single(self, i):$/;"	m	language:Python	class:SAPIENMesh
+idx_to_combinations	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def idx_to_combinations(self, idx):$/;"	m	language:Python	class:SAPIENBase
 is_power2	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def is_power2(num):$/;"	f	language:Python
 kdtree_index_pc	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def kdtree_index_pc(batch_data):$/;"	f	language:Python
 load_mesh	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_mesh(mesh_path, intermediate=10000, final=2048):$/;"	f	language:Python
-load_neural_deform_data	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):$/;"	f	language:Python
+load_neural_deform_data	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_neural_deform_data(mesh_path, intermediate=10000, final=2048):$/;"	f	language:Python
 load_neural_deform_seg_data	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=2048):$/;"	f	language:Python
 load_segmentation	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def load_segmentation(mesh_paths, indices):$/;"	f	language:Python
+n_shapes	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def n_shapes(self):$/;"	m	language:Python	class:SAPIENBase
+RandomPairSampler	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^class RandomPairSampler(Sampler):$/;"	c	language:Python
 render_obj	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def render_obj(out, v, f, delete_img=False, flat_shading=True):$/;"	f	language:Python
 sample_faces	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def sample_faces(vertices, faces, n_samples=10**4):$/;"	f	language:Python
-save_snapshot_results	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def save_snapshot_results(V, V_deformed, F, E, V_targ, F_targ, param_id_src, param_id_targ, output_path):$/;"	f	language:Python
+SAPIENBase	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^class SAPIENBase(Dataset):$/;"	c	language:Python
+SAPIENMesh	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^class SAPIENMesh(SAPIENBase):$/;"	c	language:Python
+save_snapshot_results	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def save_snapshot_results(V, V_deformed, F, E, V_targ, F_targ, param_id_targ, output_path):$/;"	f	language:Python
+_get_filenames	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def _get_filenames(data_root):$/;"	m	language:Python	class:SAPIENBase
+__getitem__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __getitem__(self, idx):$/;"	m	language:Python	class:SAPIENMesh	file:
+__init__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __init__(self, dataset):$/;"	m	language:Python	class:RandomPairSampler
+__init__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __init__(self, data_root, single_source_idx=-1):$/;"	m	language:Python	class:SAPIENBase
+__init__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __init__(self, data_root, single_source_idx=-1):$/;"	m	language:Python	class:SAPIENMesh
+__iter__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __iter__(self):$/;"	m	language:Python	class:RandomPairSampler	file:
+__len__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __len__(self):$/;"	m	language:Python	class:RandomPairSampler	file:
+__len__	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def __len__(self):$/;"	m	language:Python	class:SAPIENBase	file:

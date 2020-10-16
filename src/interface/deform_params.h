@@ -25,6 +25,7 @@ struct DeformParams
 };
 
 int CreateParams();
+void ClearOldestParams();
 DeformParams& GetParams(int param_id);
 
 int InitializeDeformTemplate(

@@ -12,6 +12,9 @@ int CreateParams() {
 DeformParams& GetParams(int param_id) {
 	return g_params[param_id];
 }
+void ClearOldestParams() {
+	g_params.erase(g_params.begin());
+}
 
 int InitializeDeformTemplate(
 	torch::Tensor tensorV,

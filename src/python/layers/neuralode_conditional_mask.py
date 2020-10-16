@@ -40,8 +40,8 @@ class ImNet(nn.Module):
     def forward(self, latent_vector, points):
         """Forward method.
         Args:
-          points: `[batch_size, dim]` tensor
           latent_vector: `[in_features]` tensor
+          points: `[batch_size, dim]` tensor
         Returns:
           output through this layer of shape [batch_size, out_features].
         """
@@ -65,8 +65,9 @@ class NeuralFlowModel(nn.Module):
         self.flow_net = self.flow_net.to(device)
         self.latent_updated = False
         self.lat_params = None
+        self.curr_lat_params = None
 
-    def update_latents(self, latent_sequence):
+    def update_latents(self, latent_sequence, src_idx):
         """
         Args:
             latent_sequence: long or float tensor of shape [batch, nsteps, latent_size].
@@ -74,6 +75,7 @@ class NeuralFlowModel(nn.Module):
                              if long, index into self.lat_params to retrieve latents.
         """
         self.latent_sequence = latent_sequence
+        self.curr_lat_params = self.lat_params[src_idx]
         self.latent_updated = True
 
     def latent_at_t(self, t):
@@ -85,6 +87,12 @@ class NeuralFlowModel(nn.Module):
         latent_t1 = self.latent_sequence[1, :]
         latent_val = latent_t0 + alpha * (latent_t1 - latent_t0)
         return latent_val
+
+    def add_lat_params(self, params):
+        self.lat_params = params
+
+    def get_lat_params(self, idx):
+        return self.lat_params[idx]
 
     def forward(self, t, points):
         """
@@ -99,6 +107,8 @@ class NeuralFlowModel(nn.Module):
             raise RuntimeError('Latent not updated. '
                                'Use .update_latents() to update the source and target latents.')
         latent_val = self.latent_at_t(t)
+
+        points = torch.cat([points, self.curr_lat_params], dim=1)
         flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
         return flow
 
@@ -127,8 +137,17 @@ class NeuralFlowDeformer(nn.Module):
         self.device = device
         self.net = NeuralFlowModel(dim=dim, latent_size=latent_size, out=out, device=self.device)
         self.net = self.net.to(device)
-    
-    def forward(self, points, latent_sequence):
+
+
+    def add_lat_params(self, params):
+        self.net.add_lat_params(params)
+
+
+    def get_lat_params(self, idx):
+        return self.net.get_lat_params(idx)
+
+
+    def forward(self, points, latent_sequence, src_idx):
         """Forward transformation (source -> latent_path -> target).
 
         To perform backward transformation, simply switch the order of the lat codes.
@@ -139,7 +158,7 @@ class NeuralFlowDeformer(nn.Module):
         Returns:
           points_transformed: tensor of shape [nsteps, batch, num_points, dim]
         """
-        self.net.update_latents(latent_sequence)
+        self.net.update_latents(latent_sequence, src_idx)
         points_transformed = self.odeint(self.net, points, self.timing, method=self.method,
                                          rtol=self.rtol, atol=self.atol)
         return points_transformed[-1]

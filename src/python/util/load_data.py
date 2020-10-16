@@ -7,16 +7,16 @@ from samplers import sample_faces, fps
 import numpy as np
 
 
-def compute_deformation_pairs(all_pairs, n):
+def compute_deformation_pairs(src_idx, n):
     pairs = []
-    if all_pairs:
+    if src_idx == -1:
         for i in range(n):
-            for j in range(i + 1, n):
+            for j in range(i, n):
                 pairs.append((i, j))
                 pairs.append((j, i))
     else:
-        for i in range(1, n):
-            pairs.append((0, i))
+        for i in range(n):
+            pairs.append((src_idx, i))
     return pairs
 
 
@@ -65,6 +65,19 @@ def load_segmentation(mesh_paths, indices):
     return part_sizes_all
 
 
+def load_neural_deform_data(mesh_path, intermediate=10000, final=2048):
+    V, F, E, V_surf = load_mesh(mesh_path, intermediate, final)
+    V = torch.from_numpy(V)
+    F = torch.from_numpy(F)
+    E = torch.from_numpy(E)
+    V_surf = torch.from_numpy(V_surf)
+
+    # Graph vertices and edges for deformation.
+    GV = V.clone()
+    GE = E.clone()
+
+    return (V, F, E, V_surf, GV, GE)
+"""
 def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
     # Load meshes.
     V_all = []
@@ -90,7 +103,7 @@ def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
         GE_all.append(E_all[-1].clone())
 
     return (V_all, F_all, E_all, V_surf_all), (GV_all, GE_all)
-
+"""
 
 def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=2048):
     V_parts_all = []
