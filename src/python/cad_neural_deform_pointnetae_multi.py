@@ -13,7 +13,7 @@ from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
 from layers.pointnet_ae import Network
 from torch.utils.data import DataLoader
-from util.load_data import compute_deformation_pairs, load_neural_deform_data
+from util.load_data import compute_deformation_pairs, load_neural_deform_data, collate
 from util.save_data import save_snapshot_results
 from util.dataloader import SAPIENMesh, RandomPairSampler
 import pyDeform
@@ -36,6 +36,7 @@ parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
 EPOCH_SNAPSHOT_INTERVAL = 50
+# Needs to be large enough to hold at least 2*batchsize for src and targ shapes.
 MAX_CACHE_SIZE = 3000
 idx_to_param_id_cache = OrderedDict()
 
@@ -46,10 +47,10 @@ device = torch.device(args.device)
 batchsize = int(args.batchsize)
 epochs = int(args.epochs)
 
-train_dataset = SAPIENMesh(args.input, single_source_idx=0)
+train_dataset = SAPIENMesh(args.input, single_source_idx=int(args.single_source_idx))
 train_sampler = RandomPairSampler(train_dataset)
 train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False,
-                          drop_last=True, sampler=train_sampler)
+                          drop_last=True, sampler=train_sampler, collate_fn=collate)
 
 # PointNet layer.
 pointnet_conf = SimpleNamespace(
@@ -58,6 +59,9 @@ pointnet = Network(pointnet_conf, 1024)
 pointnet.load_state_dict(torch.load(
     args.pretrained_pointnet_ckpt_path, map_location=device))
 pointnet.eval()
+
+for param in pointnet.parameters():
+    param.requires_grad = False
 pointnet = pointnet.to(device)
 
 reverse_loss = ReverseLossLayer()
@@ -68,55 +72,66 @@ deformer.to(device)
 optimizer = optim.Adam(deformer.parameters(), lr=1e-3)
 
 for epoch in range(epochs):
-    loss = 0
-    for batch_idx, data_tensors in enumerate(train_loader):
+    for batch_idx, data_tensors in enumerate(train_loader):    
         optimizer.zero_grad()
+        loss = 0
+        loss_forward = 0
+        loss_backward = 0
         
         # Retrieve data for deformation
-        i, j, src_data, tar_data = data_tensors
-        V_src, F_src, E_src, V_sample_src, GV_src, GE_src = src_data
-        V_tar, F_tar, E_tar, V_sample_tar, GV_tar, GE_tar = tar_data
-
+        i, j, src_data, tar_data, V_src_sample, V_tar_sample = data_tensors
+        V_src, F_src, E_src, GV_src, GE_src = src_data
+        V_tar, F_tar, E_tar, GV_tar, GE_tar = tar_data
+       
         # Prepare data for deformation
         graph_loss = GraphLossLayerBatch(
             i, j, V_src, F_src, V_tar, F_tar, GV_src, GE_src,
             GV_tar, GE_tar, rigidity, idx_to_param_id_cache, MAX_CACHE_SIZE, device)
-        src_param_id = idx_to_param_id_cache[int(i)]
-        tar_param_id = idx_to_param_id_cache[int(j)]
-
+        
         # Prepare PointNet input.
-        GV_pointnet_inputs = torch.cat([V_sample_src, V_sample_tar], dim=0).to(device)
+        GV_pointnet_inputs = torch.cat([V_src_sample, V_tar_sample], dim=0).to(device)
         _, GV_features = pointnet(GV_pointnet_inputs)
         GV_features = GV_features.detach()
-    
-        # Copies of normalized GV for deformation training.
-        GV_tar_origin = GV_tar.clone()
-        GV_src_device = GV_src.to(device)
-
-        # Deform and compute losses, assuming batchsize = 1.
-        GV_deformed = deformer.forward(GV_src_device.squeeze(0), GV_features)
-        loss_forward = graph_loss(
-            GV_deformed, GE_src, GV_tar, GE_tar, src_param_id, tar_param_id, 0)
-        loss_backward = reverse_loss(GV_deformed, GV_tar_origin, device)
-        loss = loss_forward + loss_backward
        
-        # Save results.
-        print("Epoch: {}, Batch: {}, Shape_Pair: ({}, {}),"
-              "Loss_forward: {: .6f}, Loss_backward: {: .6f}".format(
-            epoch, batch_idx, int(i), int(j), np.sqrt(loss_forward.item() / GV_src.shape[1]),
-            np.sqrt(loss_backward.item() / GV_tar.shape[1])))
+        # Deform each (src, tar) pair.
+        for k in range(batchsize):
+            src_param_id = idx_to_param_id_cache[i[k]]
+            tar_param_id = idx_to_param_id_cache[j[k]]
+            
+            # Copies of normalized GV for deformation training.
+            GV_tar_origin = GV_tar[k].clone()
+            GV_src_device = GV_src[k].to(device)
 
-        if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:
-            print("Saving snapshot...")
-            if epoch == epochs - 1:
-                output = output_prefix + "_final_"
-            else:
-                output = output_prefix + "_snapshot_"
-            output += str(epoch).zfill(4) + "_" + str(int(i)).zfill(2) + "_" + str(int(j)).zfill(2) + ".obj"
-            with torch.no_grad():
-                save_snapshot_results(V_src.squeeze(0), GV_deformed, F_src.squeeze(0), E_src.squeeze(0),
-                                      V_tar.squeeze(0), F_tar.squeeze(0), tar_param_id, output)
-        
+            # Deform.
+            GV_feature = torch.stack(
+                [GV_features[k], GV_features[batchsize + k]], dim=0) 
+            GV_deformed = deformer.forward(GV_src_device, GV_feature)
+
+            # Compute losses.
+            loss_forward += graph_loss(
+                GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param_id, tar_param_id, 0)
+            loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device)
+            loss += loss_forward + loss_backward
+           
+            # Save results.
+            if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:
+                print("Saving snapshot...")
+                if epoch == epochs - 1:
+                    output = output_prefix + "_final_"
+                else:
+                    output = output_prefix + "_snapshot_"
+                output += str(epoch).zfill(4) + "_" + \
+                    str(i[k]).zfill(2) + "_" + str(j[k]).zfill(2) + ".obj"
+                with torch.no_grad():
+                    save_snapshot_results(V_src[k], GV_deformed, F_src[k], E_src[k],
+                                          V_tar[k], F_tar[k], tar_param_id, output)    
+
+        print("Epoch: {}, Batch: {}, Shape_Pair: ({}, {}), "
+              "Loss_forward: {: .6f}, Loss_backward: {: .6f}".format(
+                  epoch, batch_idx, i, j, np.sqrt(
+                      loss_forward.item() / GV_src[0].shape[0] / batchsize),
+                  np.sqrt(loss_backward.item() / GV_tar[0].shape[0] / batchsize)))
+
         loss.backward()
         optimizer.step()
 

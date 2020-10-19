@@ -7,6 +7,48 @@ from samplers import sample_faces, fps
 import numpy as np
 
 
+def collate(batch):
+    i_idxs = []
+    j_idxs = []
+    V_is = []
+    F_is = []
+    E_is = []
+    V_surf_is = []
+    GV_is = []
+    GE_is = []
+    V_js = []
+    F_js = []
+    E_js = []
+    V_surf_js = []
+    GV_js = []
+    GE_js = []
+
+    for (i, j, data_i, data_j) in batch:
+        i_idxs.append(i)
+        j_idxs.append(j)
+        (V_i, F_i, E_i, V_surf_i, GV_i, GE_i) = data_i
+        (V_j, F_j, E_j, V_surf_j, GV_j, GE_j) = data_j
+
+        V_is.append(V_i)
+        F_is.append(F_i)
+        E_is.append(E_i)
+        V_surf_is.append(V_surf_i)
+        GV_is.append(GV_i)
+        GE_is.append(GE_i)
+
+        V_js.append(V_j)
+        F_js.append(F_j)
+        E_js.append(E_j)
+        V_surf_js.append(V_surf_j)
+        GV_js.append(GV_j)
+        GE_js.append(GE_j)
+
+    V_surf_is = torch.stack(V_surf_is, dim=0)
+    V_surf_js = torch.stack(V_surf_js, dim=0)
+    return [i_idxs, j_idxs, (V_is, F_is, E_is, GV_is, GE_is),
+            (V_js, F_js, E_js, GV_js, GE_js), V_surf_is, V_surf_js]
+
+
 def compute_deformation_pairs(src_idx, n):
     pairs = []
     if src_idx == -1:
@@ -104,7 +146,6 @@ def load_neural_deform_data(mesh_paths, device, intermediate=10000, final=2048):
 
     return (V_all, F_all, E_all, V_surf_all), (GV_all, GE_all)
 """
-
 def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=2048):
     V_parts_all = []
     V_parts_combined_all = []
@@ -144,5 +185,3 @@ def load_neural_deform_seg_data(mesh_paths, device, intermediate=10000, final=20
         """
     return (V_parts_all, V_parts_combined_all, F_all, E_all, V_surf_all), \
             (GV_parts_combined_all, GE_all)
-
-

@@ -40,15 +40,22 @@ class SAPIENBase(Dataset):
 
     def idx_to_combinations(self, idx):
         """Convert s linear index to a pair of indices."""
-        if self.single_source_idx >= 0:
+        if self.single_source_idx == -1:
+            if hasattr(idx, "__len__"):
+                i = []
+                j = []
+                for k in range(len(idx)):
+                    i.append(np.floor(idx[k] / self.n_shapes))
+                    j.append(idx[k] - i[k] * self.n_shapes)
+            else:
+                i = np.floor(idx / self.n_shapes)
+                j = idx - i * self.n_shapes
+        else:
             if hasattr(idx, "__len__"):
                 i = len(idx) * [self.single_source_idx]
             else:
                 i = self.single_source_idx
             j = idx
-        else:
-            i = np.floor(idx / self.n_shapes)
-            j = idx - i * self.n_shapes
 
         if hasattr(idx, "__len__"):
             i = np.array(i, dtype=int)
@@ -60,10 +67,12 @@ class SAPIENBase(Dataset):
 
     def combinations_to_idx(self, i, j):
         """Convert a pair of indices to a linear index."""
-        if self.single_source_idx >= 0:
-            idx = j
+        if self.single_source_idx == -1:
+            idx = []
+            for k in range(len(i)):
+                idx.append(i[k] * self.n_shapes + j[k])
         else:
-            idx = i * self.n_shapes + j
+            idx = j
         
         if hasattr(idx, "__len__"):
             idx = np.array(idx, dtype=int)
@@ -120,7 +129,6 @@ class RandomPairSampler(Sampler):
     def __init__(self, dataset):
         self.dataset = dataset
         self.pairs = compute_deformation_pairs(dataset.single_source_idx, dataset.n_shapes)
-        
     def __iter__(self):
         pairs = np.random.permutation(self.pairs)
         src_idxs = []

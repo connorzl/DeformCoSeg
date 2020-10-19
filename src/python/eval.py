@@ -22,20 +22,18 @@ import numpy as np
 import argparse
 import random
 from types import SimpleNamespace
-import time
 
 parser = argparse.ArgumentParser(description='Rigid Deformation.')
 parser.add_argument('--input', default='')
 parser.add_argument('--output_prefix', default='./cad-output')
+parser.add_argument('--ckpt', default='')
 parser.add_argument('--single_source_idx', default=-1)
 parser.add_argument('--rigidity', default='0.1')
 parser.add_argument('--device', default='cuda')
-parser.add_argument('--epochs', default=1000)
 parser.add_argument('--pretrained_pointnet_ckpt_path', default='')
 parser.add_argument('--batchsize', default=1)
 args = parser.parse_args()
 
-EPOCH_SNAPSHOT_INTERVAL = 50
 # Needs to be large enough to hold at least 2*batchsize for src and targ shapes.
 MAX_CACHE_SIZE = 3000
 idx_to_param_id_cache = OrderedDict()
@@ -44,7 +42,6 @@ output_prefix = args.output_prefix
 rigidity = float(args.rigidity)
 device = torch.device(args.device)
 batchsize = int(args.batchsize)
-epochs = int(args.epochs)
 
 train_dataset = SAPIENMesh(args.input, single_source_idx=int(args.single_source_idx))
 train_sampler = RandomPairSampler(train_dataset)
@@ -62,21 +59,16 @@ for param in pointnet.parameters():
     param.requires_grad = False
 pointnet = pointnet.to(device)
 
-# Mask Network.
+# Load modules from checkpoint.
 NUM_PARTS = 2
-mask_network = PointNet2(NUM_PARTS).to(device)
+ckpt = torch.load(args.ckpt, map_location=device)
+deformer = ckpt["deformer"].to(device)
+mask_network = ckpt["mask_network"].to(device)
 
 reverse_loss = ReverseLossLayer()
 
-# Flow layer.
-deformer = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
-deformer.to(device)
-optimizer = optim.Adam(deformer.parameters(), lr=1e-3)
-
-for epoch in range(epochs):
-    for batch_idx, data_tensors in enumerate(train_loader):    
-        optimizer.zero_grad()
-        loss = 0
+for batch_idx, data_tensors in enumerate(train_loader):    
+    with torch.no_grad():
         loss_mask = 0
         loss_forward = 0
         loss_backward = 0
@@ -127,36 +119,26 @@ for epoch in range(epochs):
             loss_forward += graph_loss(
                 GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param_id, tar_param_id, 0)
             loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device)
-            loss += loss_forward + loss_backward + loss_mask
-           
-            # Save results.
-            if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:
-                print("Saving snapshot...")
-                if epoch == epochs - 1:
-                    output = output_prefix + "_final_"
-                else:
-                    output = output_prefix + "_snapshot_"
-                output += str(epoch).zfill(4) + "_" + \
-                    str(i[k]).zfill(2) + "_" + str(j[k]).zfill(2) + ".obj"
-                with torch.no_grad():
-                    save_snapshot_results(V_src[k], GV_deformed, F_src[k], E_src[k],
-                                          V_tar[k], F_tar[k], tar_param_id, output)    
+
+            output = output_prefix + "_eval_" + str(i[k]).zfill(2) + "_" + str(j[k]).zfill(2)
+
+            # Output segmentation
+            part_vertices = [[] for _ in range(NUM_PARTS)]
+            _, max_indices = torch.max(predicted_mask, dim=1)
+            for l in range(max_indices.shape[0]):
+                part = max_indices[l]
+                part_vertices[part].append(GV_src[k][l].numpy())
+            for l, part in enumerate(part_vertices):
+                part_output = output + "_part_" + str(l).zfill(2) + ".xyz"
+                np.savetxt(part_output, np.asarray(part), fmt="%.6f")
+
+            save_snapshot_results(V_src[k], GV_deformed, F_src[k], E_src[k],
+                                  V_tar[k], F_tar[k], tar_param_id, output + ".obj")    
                 
-        print("Epoch: {} | Batch: {} | Shape_Pair: ({}, {}) | "
+        print("Batch: {} | Shape_Pair: ({}, {}) | "
               "Loss_forward: {:.6f} | Loss_backward: {:.6f} | Loss_mask: {:.6f}".format(
-                  epoch, batch_idx, i, j, np.sqrt(
+                  batch_idx, i, j, np.sqrt(
                       loss_forward.item() / GV_src_device.shape[0] / batchsize),
                   np.sqrt(loss_backward.item() /
                           GV_tar_origin.shape[0] / batchsize),
                   np.sqrt(loss_mask.item() / GV_src_device.shape[0] / batchsize)))
-
-        if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:
-            if epoch == epochs - 1:
-                output = output_prefix + "_final_" + str(epoch).zfill(4) + ".ckpt"
-            else:
-                output = output_prefix + "_snapshot_" + str(epoch).zfill(4) + ".ckpt"
-            torch.save({"deformer": deformer, "mask_network": mask_network,
-                        "optim": optimizer}, output)
-
-        loss.backward()
-        optimizer.step()

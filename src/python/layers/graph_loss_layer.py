@@ -71,6 +71,32 @@ class GraphLossLayer(nn.Module):
         return GraphLossFunction.apply(V2, E2,
                                         self.rigidity2, self.param_id2, self.param_id1)
 
+class GraphLossLayerPairs(nn.Module):
+    def __init__(self, V_all, F_all, graph_V_all, graph_E_all,
+                 rigidity, d=torch.device('cpu')):
+        super(GraphLossLayerPairs, self).__init__()
+
+        global device
+        device = d
+
+        self.param_ids = []
+        for i in range(len(V_all)):
+            self.param_ids.append(torch.tensor(
+                pyDeform.InitializeDeformTemplate(V_all[i], F_all[i], 0, 64)))
+            
+            pyDeform.NormalizeByTemplate(graph_V_all[i], self.param_ids[i].tolist())
+
+            pyDeform.StoreGraphInformation(
+                graph_V_all[i], graph_E_all[i], self.param_ids[i].tolist())
+        self.rigidity2 = torch.tensor(rigidity * rigidity)
+
+    def forward(self, V1, E1, V2, E2, index_1, index_2, direction):
+        if direction == 0:
+            return GraphLossFunction.apply(V1, E1,
+                                            self.rigidity2, self.param_ids[index_1], self.param_ids[index_2])
+
+        return GraphLossFunction.apply(V2, E2,
+                                        self.rigidity2, self.param_ids[index_2], self.param_ids[index_1])
 
 class GraphLossLayerBatch(nn.Module):
     def __init__(self, i, j, V1, F1, V2, F2, graph_V1, graph_E1, graph_V2, graph_E2,
@@ -79,7 +105,7 @@ class GraphLossLayerBatch(nn.Module):
 
         global device
         device = d
-        self.batchsize = V1.shape[0]
+        self.batchsize = len(i)
         self.max_cache_size = max_cache_size
 
         self.initialize_deform_params(i, V1, F1, graph_V1, graph_E1, cached_shapes)
@@ -88,7 +114,7 @@ class GraphLossLayerBatch(nn.Module):
 
     def initialize_deform_params(self, idx, V, F, graph_V, graph_E, cached_shapes):
         for i in range(self.batchsize):
-            shape_index = int(idx[i])
+            shape_index = idx[i]
             if shape_index not in cached_shapes:
                 # Remove oldest element from cache if too full
                 if len(cached_shapes) >= self.max_cache_size:

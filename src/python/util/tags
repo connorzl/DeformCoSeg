@@ -1,5 +1,6 @@
 !_TAG_FILE_SORTED	2	/0=unsorted, 1=sorted, 2=foldcase/
 binary_tree_pooling	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/samplers.py	/^def binary_tree_pooling(batch_data, k=2, num_points=None):$/;"	f	language:Python
+collate	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def collate(batch):$/;"	f	language:Python
 combinations_to_idx	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/dataloader.py	/^    def combinations_to_idx(self, i, j):$/;"	m	language:Python	class:SAPIENBase
 compute_deformation_pairs	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/load_data.py	/^def compute_deformation_pairs(src_idx, n):$/;"	f	language:Python
 export_obj	/orion/u/connorzl/projects/deform_coseg/DeformCoSeg/src/python/util/save_data.py	/^def export_obj(out, v, f):$/;"	f	language:Python

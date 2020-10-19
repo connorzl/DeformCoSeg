@@ -102,7 +102,6 @@ class PointNet2(pl.LightningModule):
             l_features[i - 1] = self.FP_modules[i](
                 l_xyz[i - 1], l_xyz[i], l_features[i - 1], l_features[i]
             )
-        
         res = self.fc_layer(l_features[0])
         res = torch.transpose(res, 2, 1)
         return res

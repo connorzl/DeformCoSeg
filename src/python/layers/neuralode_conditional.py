@@ -56,12 +56,40 @@ class ImNet(nn.Module):
         x_tmp = self.fc5(x_tmp)
         return x_tmp
 
+class ODEFuncPointNet(nn.Module):
+    def __init__(self, k=1):
+        super(ODEFuncPointNet, self).__init__()
+        m = 50
+        nlin = nn.LeakyReLU()
+        self.net = nn.Sequential(
+            nn.Linear(k, m),
+            nlin,
+            nn.Linear(m, m),
+            nlin,
+            nn.Linear(m, m),
+            nlin,
+            nn.Linear(m, 3),
+        )
+
+        for m in self.net.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=1e-1)
+                nn.init.constant_(m.bias, val=0)
+
+    def forward(self, latent_vector, points):
+        # Concatenate target global features vector to each point.
+        latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
+        net_input = torch.cat((points, latent_vector), dim=1)
+        velocity_field = self.net(net_input)
+        return velocity_field
+
 
 class NeuralFlowModel(nn.Module):
     def __init__(self, dim=3, latent_size=1, out=3, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
         self.device = device
-        self.flow_net = ImNet(dim=dim, in_features=latent_size, out_features=out)
+        #self.flow_net = ImNet(dim=dim, in_features=latent_size, out_features=out)
+        self.flow_net = ODEFuncPointNet(k=dim+latent_size)
         self.flow_net = self.flow_net.to(device)
         self.latent_updated = False
         self.lat_params = None
