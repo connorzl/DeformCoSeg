@@ -1,38 +1,38 @@
 """ShapeNet deformation dataloader"""
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build')))
 import torch
+import pyDeform
 from torch.utils.data import Dataset, Sampler
 import numpy as np
 import trimesh
 import glob
 from collections import OrderedDict
-from load_data import load_neural_deform_data, compute_deformation_pairs
-
+from load_data import load_neural_deform_data, compute_deformation_pairs, load_segmentation_mask
+import multiprocessing
+import time 
 
 class SAPIENBase(Dataset):
     """Pytorch Dataset base for loading ShapeNet shape pairs.
     """
 
-    def __init__(self, data_root, single_source_idx=-1):
+    def __init__(self, data_root):
         """
         Initialize DataSet
         Args:
           data_root: str, path to data root that contains the ShapeNet dataset.
-          single_source_idx: int, if non-negative, then only load (src, targ_i)
         """
         self.data_root = data_root
         self.files = self._get_filenames(self.data_root)
-        self.single_source_idx = single_source_idx
 
     @staticmethod
     def _get_filenames(data_root):
         return sorted(glob.glob(os.path.join(data_root, "*.obj"), recursive=True))
 
     def __len__(self):
-        if self.single_source_idx >= 0:
-            return self.n_shapes
-        else:
-            return self.n_shapes ** 2
+        return self.n_shapes
 
     @property
     def n_shapes(self):
@@ -40,64 +40,60 @@ class SAPIENBase(Dataset):
 
     def idx_to_combinations(self, idx):
         """Convert s linear index to a pair of indices."""
-        if self.single_source_idx == -1:
-            if hasattr(idx, "__len__"):
-                i = []
-                j = []
-                for k in range(len(idx)):
-                    i.append(np.floor(idx[k] / self.n_shapes))
-                    j.append(idx[k] - i[k] * self.n_shapes)
-            else:
-                i = np.floor(idx / self.n_shapes)
-                j = idx - i * self.n_shapes
-        else:
-            if hasattr(idx, "__len__"):
-                i = len(idx) * [self.single_source_idx]
-            else:
-                i = self.single_source_idx
-            j = idx
-
         if hasattr(idx, "__len__"):
-            i = np.array(i, dtype=int)
+            i = np.array([0 for _ in range(len(idx))], dtype=int)
             j = np.array(j, dtype=int)
         else:
-            i = int(i)
-            j = int(j)
+            i = 0
+            j = int(idx)
         return i, j
 
     def combinations_to_idx(self, i, j):
         """Convert a pair of indices to a linear index."""
-        if self.single_source_idx == -1:
-            idx = []
-            for k in range(len(i)):
-                idx.append(i[k] * self.n_shapes + j[k])
+        if hasattr(j, "__len__"):
+            idx = np.array(j, dtype=int)
         else:
-            idx = j
-        
-        if hasattr(idx, "__len__"):
-            idx = np.array(idx, dtype=int)
-        else:
-            idx = int(idx)
+            idx = int(j)
         return idx
-    
+   
+
 class SAPIENMesh(SAPIENBase):
     """Pytorch Dataset for sampling entire meshes."""
 
-    def __init__(self, data_root, single_source_idx=-1):
+    def __init__(self, data_root):
         """
         Initialize DataSet
         Args:
           data_root: str, path to data root that contains the ShapeNet dataset.
         """
-        super(SAPIENMesh, self).__init__(data_root=data_root, single_source_idx=single_source_idx)
+        super(SAPIENMesh, self).__init__(data_root=data_root)
+        pool = multiprocessing.Pool(processes=4)
+        self.data = pool.map(load_neural_deform_data, self.files)
+        self.segmentation_masks = pool.map(load_segmentation_mask, self.files)
+
+        # Preprocess all the shapes.
+        print("Preprocessing shapes!")
+        time_start = time.time()
+        self.param_ids = []
+        for (V, F, _, _, GV, GE) in self.data:
+            param_id = pyDeform.InitializeDeformTemplate(V, F, 0, 64)
+            pyDeform.NormalizeByTemplate(GV, param_id)
+            pyDeform.StoreGraphInformation(GV, GE, param_id)
+            self.param_ids.append(param_id)
+        print("Done preprocessing shapes:", time.time() - time_start)
 
     def get_pairs(self, i, j):
-        data_i = self.get_single(i)
-        data_j = self.get_single(j)
-        return i, j, data_i, data_j
+        data_i, seg_i = self.get_single(i)
+        data_j, seg_j = self.get_single(j)
+        return i, j, self.param_ids[i], self.param_ids[j], data_i, data_j, seg_i, seg_j
 
     def get_single(self, i):
-        return load_neural_deform_data(self.files[i])
+        data_i = [x.clone() for x in self.data[i]]
+        if self.segmentation_masks[i] is not None:
+            mask_i = self.segmentation_masks[i].clone()
+        else:
+            mask_i = None
+        return self.data[i], self.segmentation_masks[i]
 
     def __getitem__(self, idx):
         """Get a random pair of meshes.
@@ -128,7 +124,7 @@ class RandomPairSampler(Sampler):
 
     def __init__(self, dataset):
         self.dataset = dataset
-        self.pairs = compute_deformation_pairs(dataset.single_source_idx, dataset.n_shapes)
+        self.pairs = compute_deformation_pairs(0, dataset.n_shapes)
     def __iter__(self):
         pairs = np.random.permutation(self.pairs)
         src_idxs = []
@@ -140,5 +136,4 @@ class RandomPairSampler(Sampler):
         return iter(combo_ids)
 
     def __len__(self):
-        return len(dataset)
-
+        return len(self.dataset)

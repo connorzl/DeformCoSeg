@@ -40,8 +40,8 @@ class ImNet(nn.Module):
     def forward(self, latent_vector, points):
         """Forward method.
         Args:
-          latent_vector: `[in_features]` tensor
           points: `[batch_size, dim]` tensor
+          latent_vector: `[in_features]` tensor
         Returns:
           output through this layer of shape [batch_size, out_features].
         """
@@ -56,18 +56,53 @@ class ImNet(nn.Module):
         x_tmp = self.fc5(x_tmp)
         return x_tmp
 
+class ODEFuncPointNet(nn.Module):
+    def __init__(self, dim=1, latent=1, num_parts=1):
+        super(ODEFuncPointNet, self).__init__()
+        m = 50
+        nlin = nn.LeakyReLU()
+        self.net = nn.Sequential(
+            nn.Linear(dim+latent, m),
+            nlin,
+            nn.Linear(m, m),
+            nlin,
+            nn.Linear(m, m),
+            nlin,
+            nn.Linear(m, num_parts * dim),
+        )
+
+        for m in self.net.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=1e-1)
+                nn.init.constant_(m.bias, val=0)
+
+    def forward(self, latent_vector, points, flow_mask):
+        # Concatenate target global features vector to each point.
+        # V x 1024
+        latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
+        net_input = torch.cat((points, latent_vector), dim=1)
+        part_flows = self.net(net_input)
+
+        flow = torch.zeros(flow_mask.shape[0], 3).to(part_flows.device)
+        part_flows = torch.split(part_flows, 3, dim=1)
+        for i in range(len(part_flows)):
+            flow += part_flows[i] * flow_mask[:, i].unsqueeze(1)
+        return flow
+
 
 class NeuralFlowModel(nn.Module):
-    def __init__(self, dim=3, latent_size=1, out=3, device=torch.device('cpu')):
+    def __init__(self, dim=3, latent_size=1, num_parts=3, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
         self.device = device
-        self.flow_net = ImNet(dim=dim, in_features=latent_size, out_features=out)
+        #self.flow_net = ImNet(dim=dim, in_features=latent_size, out_features=out)
+        self.flow_net = ODEFuncPointNet(dim, latent_size, num_parts)
         self.flow_net = self.flow_net.to(device)
         self.latent_updated = False
-        self.lat_params = None
-        self.curr_lat_params = None
+        self.mask_updated = False
+        self.latent_sequence = None
+        self.flow_mask = None
 
-    def update_latents(self, latent_sequence, src_idx):
+    def update_latents(self, latent_sequence):
         """
         Args:
             latent_sequence: long or float tensor of shape [batch, nsteps, latent_size].
@@ -75,8 +110,11 @@ class NeuralFlowModel(nn.Module):
                              if long, index into self.lat_params to retrieve latents.
         """
         self.latent_sequence = latent_sequence
-        self.curr_lat_params = self.lat_params[src_idx]
         self.latent_updated = True
+
+    def update_mask(self, flow_mask):
+        self.flow_mask = flow_mask
+        self.mask_updated = True
 
     def latent_at_t(self, t):
         """Helper fn to compute latent at t."""
@@ -88,12 +126,6 @@ class NeuralFlowModel(nn.Module):
         latent_val = latent_t0 + alpha * (latent_t1 - latent_t0)
         return latent_val
 
-    def add_lat_params(self, params):
-        self.lat_params = params
-
-    def get_lat_params(self, idx):
-        return self.lat_params[idx]
-
     def forward(self, t, points):
         """
         Args:
@@ -102,19 +134,19 @@ class NeuralFlowModel(nn.Module):
         Returns:
           vel: [batch, num_points, dim]
         """
-        # reparametrize eval along latent path as a function of a single scalar t
         if not self.latent_updated:
             raise RuntimeError('Latent not updated. '
                                'Use .update_latents() to update the source and target latents.')
+        if not self.mask_updated:
+            raise RuntimeError('Flow not updated. '
+                               'Use .update_mask() to update the flow masks.')
         latent_val = self.latent_at_t(t)
-
-        points = torch.cat([points, self.curr_lat_params], dim=1)
-        flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
+        flow = self.flow_net(latent_val, points, self.flow_mask)
         return flow
 
 
 class NeuralFlowDeformer(nn.Module):
-    def __init__(self, adjoint=False, dim=3, latent_size=1, out=3, method='dopri5', \
+    def __init__(self, adjoint=False, dim=3, latent_size=1, num_parts=1, method='dopri5', \
             atol=1e-5, rtol=1e-5, device=torch.device('cpu')):
         """Initialize. The parameters are the parameters for the Deformation Flow network.
         Args:
@@ -135,31 +167,24 @@ class NeuralFlowDeformer(nn.Module):
         self.rtol = rtol
         self.atol = atol
         self.device = device
-        self.net = NeuralFlowModel(dim=dim, latent_size=latent_size, out=out, device=self.device)
+        self.net = NeuralFlowModel(
+            dim=dim, latent_size=latent_size, num_parts=num_parts, device=self.device)
         self.net = self.net.to(device)
-
-
-    def add_lat_params(self, params):
-        self.net.add_lat_params(params)
-
-
-    def get_lat_params(self, idx):
-        return self.net.get_lat_params(idx)
-
-
-    def forward(self, points, latent_sequence, src_idx):
+    
+    def forward(self, points, latent_sequence, flow_mask):
         """Forward transformation (source -> latent_path -> target).
 
         To perform backward transformation, simply switch the order of the lat codes.
 
         Args:
+          points: [batch, num_points, 3]
           latent_sequence: float tensor of shape [batch, nsteps, latent_size]
-          points: [batch, num_points, dim]
+          flow_mask: [batch, num_points, num_parts]
         Returns:
           points_transformed: tensor of shape [nsteps, batch, num_points, dim]
         """
-        self.net.update_latents(latent_sequence, src_idx)
+        self.net.update_latents(latent_sequence)
+        self.net.update_mask(flow_mask)
         points_transformed = self.odeint(self.net, points, self.timing, method=self.method,
                                          rtol=self.rtol, atol=self.atol)
         return points_transformed[-1]
-

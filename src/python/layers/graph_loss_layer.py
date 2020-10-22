@@ -71,47 +71,20 @@ class GraphLossLayer(nn.Module):
         return GraphLossFunction.apply(V2, E2,
                                         self.rigidity2, self.param_id2, self.param_id1)
 
-class GraphLossLayerPairs(nn.Module):
-    def __init__(self, V_all, F_all, graph_V_all, graph_E_all,
-                 rigidity, d=torch.device('cpu')):
-        super(GraphLossLayerPairs, self).__init__()
-
-        global device
-        device = d
-
-        self.param_ids = []
-        for i in range(len(V_all)):
-            self.param_ids.append(torch.tensor(
-                pyDeform.InitializeDeformTemplate(V_all[i], F_all[i], 0, 64)))
-            
-            pyDeform.NormalizeByTemplate(graph_V_all[i], self.param_ids[i].tolist())
-
-            pyDeform.StoreGraphInformation(
-                graph_V_all[i], graph_E_all[i], self.param_ids[i].tolist())
-        self.rigidity2 = torch.tensor(rigidity * rigidity)
-
-    def forward(self, V1, E1, V2, E2, index_1, index_2, direction):
-        if direction == 0:
-            return GraphLossFunction.apply(V1, E1,
-                                            self.rigidity2, self.param_ids[index_1], self.param_ids[index_2])
-
-        return GraphLossFunction.apply(V2, E2,
-                                        self.rigidity2, self.param_ids[index_2], self.param_ids[index_1])
 
 class GraphLossLayerBatch(nn.Module):
-    def __init__(self, i, j, V1, F1, V2, F2, graph_V1, graph_E1, graph_V2, graph_E2,
-                 rigidity, cached_shapes, max_cache_size, d=torch.device('cpu')):
+    def __init__(self, rigidity, d=torch.device('cpu')):
         super(GraphLossLayerBatch, self).__init__()
 
         global device
         device = d
-        self.batchsize = len(i)
-        self.max_cache_size = max_cache_size
+        #self.batchsize = len(i)
+        #self.max_cache_size = max_cache_size
 
-        self.initialize_deform_params(i, V1, F1, graph_V1, graph_E1, cached_shapes)
-        self.initialize_deform_params(j, V2, F2, graph_V2, graph_E2, cached_shapes)
+        #self.initialize_deform_params(i, V1, F1, graph_V1, graph_E1, cached_shapes)
+        #self.initialize_deform_params(j, V2, F2, graph_V2, graph_E2, cached_shapes)
         self.rigidity2 = torch.tensor(rigidity * rigidity)
-
+    """
     def initialize_deform_params(self, idx, V, F, graph_V, graph_E, cached_shapes):
         for i in range(self.batchsize):
             shape_index = idx[i]
@@ -125,7 +98,7 @@ class GraphLossLayerBatch(nn.Module):
                 cached_shapes[shape_index] = pyDeform.InitializeDeformTemplate(V[i], F[i], 0, 64)
             pyDeform.NormalizeByTemplate(graph_V[i], cached_shapes[shape_index])
             pyDeform.StoreGraphInformation(graph_V[i], graph_E[i], cached_shapes[shape_index])
-
+    """
     def forward(self, V1, E1, V2, E2, src_param_id, tar_param_id, direction):
         if direction == 0:
             return GraphLossFunction.apply(V1, E1,

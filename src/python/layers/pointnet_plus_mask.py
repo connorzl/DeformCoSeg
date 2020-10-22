@@ -13,7 +13,7 @@ class PointNet2(pl.LightningModule):
         super().__init__()
 
         self.n_parts = n_parts
-        self.bn = False
+        self.bn = True
         self._build_model()
 
     def _build_model(self):

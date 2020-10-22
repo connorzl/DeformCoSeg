@@ -10,7 +10,7 @@ import torch
 from collections import OrderedDict
 from layers.graph_loss_layer import GraphLossLayerBatch
 from layers.reverse_loss_layer import ReverseLossLayer
-from layers.neuralode_conditional import NeuralFlowDeformer
+from layers.neuralode_conditional_mask import NeuralFlowDeformer
 from layers.pointnet_ae import Network
 from layers.pointnet_plus_mask import PointNet2
 from torch.utils.data import DataLoader
@@ -107,10 +107,8 @@ for batch_idx, data_tensors in enumerate(train_loader):
             mask_input = torch.cat([GV_src_device.unsqueeze(0), GV_features_src], dim=2)
             predicted_mask = mask_network(mask_input).squeeze(0)
             predicted_mask = predicted_mask.softmax(dim=1)
-            flow = deformer.forward(GV_src_device, GV_feature) - GV_src_device
-            # (V x 3 x 1) * (V x 1 x NUM_PARTS)
-            flow = torch.matmul(flow.unsqueeze(2), predicted_mask.unsqueeze(1)).sum(dim=2)
-            GV_deformed = GV_src_device + flow
+
+            GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask)
 
             # Compute losses.
             ones = torch.ones(GV_src_device.shape[0], 1).to(device)
