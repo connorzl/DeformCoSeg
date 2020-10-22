@@ -39,5 +39,8 @@ int InitializeDeformTemplate(
 	params.scale = params.ref.GetScale();
 	params.trans = params.ref.GetTranslation();
 
+	//std::cout << "scale:" << params.scale << std::endl;
+	//std::cout << "trans:" << params.trans[0] << "," << params.trans[1] << "," << params.trans[2] << std::endl;
+
 	return param_id;
 }

@@ -78,32 +78,12 @@ class GraphLossLayerBatch(nn.Module):
 
         global device
         device = d
-        #self.batchsize = len(i)
-        #self.max_cache_size = max_cache_size
-
-        #self.initialize_deform_params(i, V1, F1, graph_V1, graph_E1, cached_shapes)
-        #self.initialize_deform_params(j, V2, F2, graph_V2, graph_E2, cached_shapes)
         self.rigidity2 = torch.tensor(rigidity * rigidity)
-    """
-    def initialize_deform_params(self, idx, V, F, graph_V, graph_E, cached_shapes):
-        for i in range(self.batchsize):
-            shape_index = idx[i]
-            if shape_index not in cached_shapes:
-                # Remove oldest element from cache if too full
-                if len(cached_shapes) >= self.max_cache_size:
-                    pyDeform.ClearOldestParams()
-                    cached_shapes.popitem(last=False)
-                    for shape in cached_shapes:
-                        cached_shapes[shape] -= 1
-                cached_shapes[shape_index] = pyDeform.InitializeDeformTemplate(V[i], F[i], 0, 64)
-            pyDeform.NormalizeByTemplate(graph_V[i], cached_shapes[shape_index])
-            pyDeform.StoreGraphInformation(graph_V[i], graph_E[i], cached_shapes[shape_index])
-    """
+    
     def forward(self, V1, E1, V2, E2, src_param_id, tar_param_id, direction):
         if direction == 0:
             return GraphLossFunction.apply(V1, E1,
                                            self.rigidity2, src_param_id, tar_param_id)
-
         return GraphLossFunction.apply(V2, E2,
                                         self.rigidity2, tar_param_id, src_param_id)
 

@@ -7,7 +7,6 @@ sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build')))
 import torch.optim as optim
 import torch
-from collections import OrderedDict
 from layers.graph_loss_layer import GraphLossLayerBatch
 from layers.reverse_loss_layer import ReverseLossLayer
 from layers.neuralode_conditional import NeuralFlowDeformer
@@ -33,6 +32,7 @@ parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
 EPOCH_SNAPSHOT_INTERVAL = 25
+RANDOM_SEED = 1
 
 output_prefix = args.output_prefix
 rigidity = float(args.rigidity)
@@ -40,6 +40,11 @@ device = torch.device(args.device)
 batchsize = int(args.batchsize)
 epochs = int(args.epochs)
 
+# For reproducability.
+torch.manual_seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
+
+# Dataloader.
 train_dataset = SAPIENMesh(args.input)
 train_sampler = RandomPairSampler(train_dataset)
 train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False,
@@ -62,10 +67,12 @@ pointnet = pointnet.to(device)
 deformer = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
 deformer.to(device)
 optimizer = optim.Adam(deformer.parameters(), lr=1e-3)
-        
+
+# Losses.
 graph_loss = GraphLossLayerBatch(rigidity, device)
 reverse_loss = ReverseLossLayer()
 
+# Training loop.
 for epoch in range(epochs):
     for batch_idx, data_tensors in enumerate(train_loader):    
         optimizer.zero_grad()
@@ -76,7 +83,6 @@ for epoch in range(epochs):
         # Retrieve data for deformation
         src, tar, src_param, tar_param, src_data, tar_data, \
             V_src_sample, V_tar_sample, _, _ = data_tensors
-
         V_src, F_src, E_src, GV_src, GE_src = src_data
         V_tar, F_tar, E_tar, GV_tar, GE_tar = tar_data
        
@@ -87,9 +93,6 @@ for epoch in range(epochs):
        
         # Deform each (src, tar) pair.
         for k in range(batchsize):
-            src_param_id = src_param[k]
-            tar_param_id = tar_param[k]
-
             # Copies of normalized GV for deformation training.
             GV_tar_origin = GV_tar[k].clone()
             GV_src_device = GV_src[k].to(device)
@@ -101,7 +104,7 @@ for epoch in range(epochs):
 
             # Compute losses.
             loss_forward += graph_loss(
-                GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param_id, tar_param_id, 0)
+                GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param[k], tar_param[k], 0)
             loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device)
             loss += loss_forward + loss_backward
            
@@ -113,10 +116,10 @@ for epoch in range(epochs):
                 else:
                     output = output_prefix + "_snapshot_"
                 output += str(epoch).zfill(4) + "_" + \
-                    str(src[k]).zfill(2) + "_" + str(src[k]).zfill(2) + ".obj"
+                    str(src[k]).zfill(2) + "_" + str(tar[k]).zfill(2) + ".obj"
                 with torch.no_grad():
-                    save_snapshot_results(V_src[k], GV_deformed, F_src[k], E_src[k],
-                                          V_tar[k], F_tar[k], tar_param_id, output)    
+                    save_snapshot_results(GV_deformed, V_src[k], F_src[k],
+                                          V_tar[k], F_tar[k], tar_param[k], output)    
 
         loss.backward()
         optimizer.step()

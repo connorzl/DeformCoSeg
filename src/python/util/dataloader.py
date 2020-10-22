@@ -67,9 +67,19 @@ class SAPIENMesh(SAPIENBase):
           data_root: str, path to data root that contains the ShapeNet dataset.
         """
         super(SAPIENMesh, self).__init__(data_root=data_root)
-        pool = multiprocessing.Pool(processes=4)
-        self.data = pool.map(load_neural_deform_data, self.files)
-        self.segmentation_masks = pool.map(load_segmentation_mask, self.files)
+
+        # Load all the shapes.
+        print("Loading shapes!")
+        time_start = time.time()
+        #pool = multiprocessing.Pool(processes=2)
+        #self.data = pool.map(load_neural_deform_data, self.files)
+        #self.segmentation_masks = pool.map(load_segmentation_mask, self.files)
+        self.data = []
+        self.segmentation_masks = []
+        for f in self.files:
+            self.data.append(load_neural_deform_data(f))
+            self.segmentation_masks.append(load_segmentation_mask(f))
+        print("Done loading shapes:", time.time() - time_start)
 
         # Preprocess all the shapes.
         print("Preprocessing shapes!")
