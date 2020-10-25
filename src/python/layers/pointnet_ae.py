@@ -5,7 +5,7 @@ import sys, os
 
 
 class PointNetNoBatchNorm(nn.Module):
-    def __init__(self, latent_size=1027):
+    def __init__(self, latent_size=12):
         super(PointNetNoBatchNorm, self).__init__()
         
         self.conv1 = nn.Conv1d(1027, 256, 1)
