@@ -35,7 +35,12 @@ def render_obj(out, v, f, delete_img=False, flat_shading=True):
 def save_snapshot_results(V_deformed, V, F, V_targ, F_targ, param_id_targ, output_path):
     V_deformed_copy = V_deformed.detach().clone().cpu()
     pyDeform.DenormalizeByTemplate(V_deformed_copy, param_id_targ)
-    
+   
+    # Visualize flow.
+    flow = V_deformed_copy - V
+    flow_output = output_path[:-4] + "_flow_unmasked.txt"
+    np.savetxt(flow_output, flow)
+
     # Render the source, target, and result.
     src_output = output_path[:-4] + "_src.png" 
     render_obj(src_output, V, F + 1)

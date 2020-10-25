@@ -4,6 +4,35 @@ import torch.nn.functional as F
 import sys, os
 
 
+class PointNetNoBatchNorm(nn.Module):
+    def __init__(self, latent_size=1027):
+        super(PointNetNoBatchNorm, self).__init__()
+        
+        self.conv1 = nn.Conv1d(1027, 256, 1)
+        self.conv2 = nn.Conv1d(256, 128, 1)
+        self.conv3 = nn.Conv1d(128, 64, 1)
+        self.conv4 = nn.Conv1d(64, 32, 1)
+
+        self.fc1 = nn.Linear(32, latent_size)
+
+    """
+        Input: B x N x 1027
+        Output: B x F
+    """
+    def forward(self, pcs):
+        net = pcs.permute(0, 2, 1)
+
+        net = torch.relu(self.conv1(net))
+        net = torch.relu(self.conv2(net))
+        net = torch.relu(self.conv3(net))
+        net = torch.relu(self.conv4(net))
+
+        net = net.max(dim=-1)[0]
+
+        net = torch.relu(self.fc1(net))
+        return net
+
+
 class PointNet(nn.Module):
     def __init__(self, latent_size=1024):
         super(PointNet, self).__init__()

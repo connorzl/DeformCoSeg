@@ -62,13 +62,13 @@ class ODEFuncPointNet(nn.Module):
         m = 50
         nlin = nn.LeakyReLU()
         self.net = nn.Sequential(
-            nn.Linear(dim+latent, m),
+            nn.Linear(dim+latent, 256),
             nlin,
-            nn.Linear(m, m),
+            nn.Linear(256, 128),
             nlin,
-            nn.Linear(m, m),
+            nn.Linear(128, 64),
             nlin,
-            nn.Linear(m, num_parts * dim),
+            nn.Linear(64, num_parts * dim),
         )
 
         for m in self.net.modules():
@@ -82,11 +82,12 @@ class ODEFuncPointNet(nn.Module):
         latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
         net_input = torch.cat((points, latent_vector), dim=1)
         part_flows = self.net(net_input)
-
-        flow = torch.zeros(flow_mask.shape[0], 3).to(part_flows.device)
-        part_flows = torch.split(part_flows, 3, dim=1)
-        for i in range(len(part_flows)):
-            flow += part_flows[i] * flow_mask[:, i].unsqueeze(1)
+        
+        flow = part_flows
+        #flow = torch.zeros(flow_mask.shape[0], 3).to(part_flows.device)
+        #part_flows = torch.split(part_flows, 3, dim=1)
+        #for i in range(len(part_flows)):
+        #    flow += part_flows[i] * flow_mask.unsqueeze(1)
         return flow
 
 

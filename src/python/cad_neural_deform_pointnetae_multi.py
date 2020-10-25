@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser(description='Rigid Deformation.')
 parser.add_argument('--input', default='')
 parser.add_argument('--output_prefix', default='./cad-output')
 parser.add_argument('--rigidity', default='0.1')
-parser.add_argument('--pretrained_pointnet_ckpt_path', default='')
+parser.add_argument('--pointnet_ckpt', default='')
 parser.add_argument('--batchsize', default=1)
 parser.add_argument('--epochs', default=1000)
 parser.add_argument('--device', default='cuda')
@@ -33,6 +33,7 @@ args = parser.parse_args()
 
 EPOCH_SNAPSHOT_INTERVAL = 25
 RANDOM_SEED = 1
+LATENT_SIZE = 1024
 
 output_prefix = args.output_prefix
 rigidity = float(args.rigidity)
@@ -53,18 +54,18 @@ train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False,
 # PointNet layer.
 pointnet_conf = SimpleNamespace(
     num_point=2048, decoder_type='fc', loss_type='emd')
-pointnet = Network(pointnet_conf, 1024)
-if args.pretrained_pointnet_ckpt_path != "":
+pointnet = Network(pointnet_conf, LATENT_SIZE)
+if args.pointnet_ckpt != "":
     print("Loading pretrained PointNet AE!")
     pointnet.load_state_dict(torch.load(
-        args.pretrained_pointnet_ckpt_path, map_location=device))
+        args.pointnet_ckpt, map_location=device))
     pointnet.eval()
     for param in pointnet.parameters():
         param.requires_grad = False
 pointnet = pointnet.to(device)
 
 # Flow layer.
-deformer = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=1024, device=device)
+deformer = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=LATENT_SIZE, device=device)
 deformer.to(device)
 optimizer = optim.Adam(deformer.parameters(), lr=1e-3)
 
