@@ -20,11 +20,11 @@ class ODEFuncPointNet(nn.Module):
     def forward(self, latent_vector, points, flow_mask):
         """
         Input:
-          latent_vector: 1024 shape latent code.
-          points: V x 3 
-          flow_mask: V
+          latent_vector: 1024 shape latent code at the current timestep.
+          points: V x 3 vertices at the current timestep.
+          flow_mask: V mask for the laptop screen
         Output:
-          flow: V x 3
+          flow: V x 3 velocity for the current timestep.
         """
         # V x 1024
         latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
