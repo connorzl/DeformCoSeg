@@ -5,18 +5,18 @@ import sys, os
 
 
 class PointNetNoBatchNorm(nn.Module):
-    def __init__(self, latent_size=12):
+    def __init__(self, latent_size=6):
         super(PointNetNoBatchNorm, self).__init__()
         
-        self.conv1 = nn.Conv1d(1027, 256, 1)
-        self.conv2 = nn.Conv1d(256, 128, 1)
+        self.conv1 = nn.Conv1d(2051, 512, 1)
+        self.conv2 = nn.Conv1d(512, 128, 1)
         self.conv3 = nn.Conv1d(128, 64, 1)
         self.conv4 = nn.Conv1d(64, 32, 1)
 
         self.fc1 = nn.Linear(32, latent_size)
 
     """
-        Input: B x N x 1027
+        Input: B x N x 2051
         Output: B x F
     """
     def forward(self, pcs):

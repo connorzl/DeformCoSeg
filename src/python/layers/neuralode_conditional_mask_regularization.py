@@ -5,54 +5,30 @@ from torchdiffeq import odeint
 from torchdiffeq import odeint_adjoint
 import numpy as np
 
-from layers.pointnet_ae import PointNetNoBatchNorm
-
 import torchdiffeq
 print("torchdiffeq library location:", os.path.dirname(torchdiffeq.__file__))
-
 
 
 class ODEFuncPointNet(nn.Module):
     def __init__(self, dim=1, latent=1, num_parts=1):
         super(ODEFuncPointNet, self).__init__()
-        self.net = PointNetNoBatchNorm(num_parts * 12)
 
-    def forward(self, latent_vector, points, flow_mask):
-        """
-        Input:
-          latent_vector: 1024 shape latent code at the current timestep.
-          points: V x 3 vertices at the current timestep.
-          flow_mask: V mask for the laptop screen
-        Output:
-          flow: V x 3 velocity for the current timestep.
-        """
-        # V x 1024
-        latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
-        net_input = torch.cat((points, latent_vector), dim=1)
-        transform = self.net(net_input.unsqueeze(0)).squeeze(0)
-        
-        # Compute 3x3 rotation matrix.
-        rot = transform[0:9]
-        rot = torch.reshape(rot, (1, 3, 3))
-        (U, S, V) = torch.svd(rot)
-        VT = torch.transpose(V, 1, 2)
-        sign = torch.sign(torch.det(torch.matmul(U, VT)))
-        S_rot = S.clone()
-        S_rot[:, 0] = 1.0
-        S_rot[:, 1] = 1.0
-        S_rot[:, 2] = sign
-        S_rot = torch.diag_embed(S_rot) 
-        rot = torch.matmul(torch.matmul(U, S_rot), VT)
+    def forward(self, points, flow_mask, transform):
+        x = transform[0]
+        y = transform[1]
+        z = transform[2]
+        A = torch.tensor([[0, -z, y], [z, 0, -x], [-y, x, 0]]).to(transform.device)
+        b = transform[3:6]
 
-        # Compute translation.
-        trans = transform[9:12]
-        trans = torch.reshape(trans, (1, 3, 1))
+        A = A.unsqueeze(0)
+        b = b.unsqueeze(0)
+        b = b.unsqueeze(2)
 
         # Compute deformed position.
-        transformed_verts = torch.matmul(rot, points.unsqueeze(2)) + trans
-        transformed_verts = transformed_verts.squeeze(2)
-        
-        flow = flow_mask.unsqueeze(1) * (transformed_verts - points)
+        flow = torch.matmul(A, points.unsqueeze(2)) + b
+        flow = flow.squeeze(2)
+       
+        flow = flow_mask.unsqueeze(1).float() * flow
         return flow
 
 
@@ -60,13 +36,13 @@ class NeuralFlowModel(nn.Module):
     def __init__(self, dim=3, latent_size=1, num_parts=3, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
         self.device = device
-        #self.flow_net = ImNet(dim=dim, in_features=latent_size, out_features=out)
         self.flow_net = ODEFuncPointNet(dim, latent_size, num_parts)
         self.flow_net = self.flow_net.to(device)
         self.latent_updated = False
         self.mask_updated = False
         self.latent_sequence = None
         self.flow_mask = None
+        self.transform = None
 
     def update_latents(self, latent_sequence):
         """
@@ -81,6 +57,9 @@ class NeuralFlowModel(nn.Module):
     def update_mask(self, flow_mask):
         self.flow_mask = flow_mask
         self.mask_updated = True
+
+    def update_transform(self, transform):
+        self.transform = transform
 
     def latent_at_t(self, t):
         """Helper fn to compute latent at t."""
@@ -106,8 +85,8 @@ class NeuralFlowModel(nn.Module):
         if not self.mask_updated:
             raise RuntimeError('Flow not updated. '
                                'Use .update_mask() to update the flow masks.')
-        latent_val = self.latent_at_t(t)
-        flow = self.flow_net(latent_val, points, self.flow_mask)
+        #latent_val = self.latent_at_t(t)
+        flow = self.flow_net(points, self.flow_mask, self.transform)
         return flow
 
 
@@ -137,7 +116,7 @@ class NeuralFlowDeformer(nn.Module):
             dim=dim, latent_size=latent_size, num_parts=num_parts, device=self.device)
         self.net = self.net.to(device)
     
-    def forward(self, points, latent_sequence, flow_mask):
+    def forward(self, points, latent_sequence, flow_mask, transform):
         """Forward transformation (source -> latent_path -> target).
 
         To perform backward transformation, simply switch the order of the lat codes.
@@ -151,6 +130,7 @@ class NeuralFlowDeformer(nn.Module):
         """
         self.net.update_latents(latent_sequence)
         self.net.update_mask(flow_mask)
+        self.net.update_transform(transform)
         points_transformed = self.odeint(self.net, points, self.timing, method=self.method,
                                          rtol=self.rtol, atol=self.atol)
         return points_transformed[-1]

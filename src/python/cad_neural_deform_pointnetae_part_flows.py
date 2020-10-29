@@ -9,10 +9,10 @@ import torch.optim as optim
 import torch
 from collections import OrderedDict
 from layers.graph_loss_layer import GraphLossLayerBatch
+from layers.neuralode_conditional_mask import NeuralFlowDeformer
 from layers.reverse_loss_layer import ReverseLossLayer
-#from layers.neuralode_conditional_mask import NeuralFlowDeformer
-from layers.neuralode_conditional_mask_regularization import NeuralFlowDeformer
 from layers.pointnet_ae import Network
+from layers.pointnet_plus_frame import PointNetFrame
 from layers.pointnet_plus_mask import PointNet2
 from torch.utils.data import DataLoader
 from util.load_data import compute_deformation_pairs, load_neural_deform_data, collate
@@ -53,22 +53,23 @@ pointnet = Network(pointnet_conf, 1024)
 pointnet.load_state_dict(torch.load(
     args.pointnet_ckpt, map_location=device))
 pointnet.eval()
-for param in pointnet.parameters():
-    param.requires_grad = False
 pointnet = pointnet.to(device)
 
 # Mask Network.
 NUM_PARTS = 2
-mask_network = PointNet2(NUM_PARTS).to(device)
+mask_network = PointNet2(NUM_PARTS)
+mask_network = mask_network.to(device)
 
 # Flow layer.
 deformer = NeuralFlowDeformer(
-    adjoint=False, dim=3, latent_size=1024, num_parts=NUM_PARTS-1, device=device)
-deformer.to(device)
-optimizer = optim.Adam(deformer.parameters(), lr=1e-3)
+    adjoint=False, dim=3, latent_size=1024, num_parts=NUM_PARTS, device=device)
+deformer = deformer.to(device)
 
 graph_loss = GraphLossLayerBatch(rigidity, device)
 reverse_loss = ReverseLossLayer()
+
+parameters = list(mask_network.parameters()) + list(deformer.parameters())
+optimizer = optim.Adam(parameters, lr=1e-3)
 
 for epoch in range(epochs):
     for batch_idx, data_tensors in enumerate(train_loader):    
@@ -94,11 +95,8 @@ for epoch in range(epochs):
             # Copies of normalized GV for deformation training.
             GV_tar_origin = GV_tar[k].clone()
             GV_src_device = GV_src[k].to(device)
-
             GV_feature = torch.stack(
                 [GV_features[k], GV_features[batchsize + k]], dim=0) 
-
-            screen_mask = src_mask[k][:, 1].to(device)
 
             # Predict masks.
             """
@@ -111,20 +109,18 @@ for epoch in range(epochs):
 
             # Deform.
             # We only care about 1 of the masks, since the other will be multiplied with 0 flow.
-            #GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask[:, 0])
-            GV_deformed = deformer.forward(GV_src_device, GV_feature, screen_mask)
+            #GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask)
+            GV_deformed = deformer.forward(GV_src_device, GV_feature, src_mask[k].to(device))
 
             # Compute losses
-            """
-            ones = torch.ones(GV_src_device.shape[0], 1).to(device)
-            mask_norm = torch.norm(predicted_mask, dim=1)
-            loss_mask += torch.norm(ones - mask_norm)
-            """
             loss_forward += graph_loss(
                 GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param[k], tar_param[k], 0)
             loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device)
-            loss += loss_forward + loss_backward + loss_mask
-           
+            #ones = torch.ones(predicted_mask.shape[0], 1).to(device)
+            #mask_norm = torch.norm(predicted_mask, dim=1)
+            #loss_mask += torch.norm(ones - mask_norm)
+            loss += loss_forward + loss_backward #+ 0.1 * loss_mask
+
             # Save results.
             if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:
                 print("Saving snapshot...")
@@ -135,14 +131,14 @@ for epoch in range(epochs):
                 output += str(epoch).zfill(4) + "_" + \
                     str(src[k]).zfill(2) + "_" + str(tar[k]).zfill(2) + ".obj"
                 with torch.no_grad():
-                    save_snapshot_results(GV_deformed, V_src[k], F_src[k],
+                    save_snapshot_results(GV_deformed, GV_src[k], V_src[k], F_src[k],
                                           V_tar[k], F_tar[k], tar_param[k], output)    
         
         loss.backward()
         optimizer.step()
                 
         print("Epoch: {} | Batch: {} | Shape_Pair: ({}, {}) | "
-              "Loss_forward: {:.6f} | Loss_backward: {:.6f} | Loss_mask: {:.6f}".format(
+                "Loss_forward: {:.6f} | Loss_backward: {:.6f} | Loss_mask: {:.6f}".format(
                   epoch, batch_idx, src, tar, np.sqrt(
                       loss_forward.item() / GV_src_device.shape[0] / batchsize),
                   np.sqrt(loss_backward.item() /

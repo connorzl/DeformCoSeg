@@ -8,10 +8,11 @@ import pytorch_lightning as pl
 from pointnet2_ops.pointnet2_modules import PointnetSAModule
 
 
-class PointNet2(pl.LightningModule):
-    def __init__(self):
+class PointNetFrame(pl.LightningModule):
+    def __init__(self, num_parts):
         super().__init__()
-
+        self.num_parts = num_parts
+        self.bn = False
         self._build_model()
 
     def _build_model(self):
@@ -21,8 +22,8 @@ class PointNet2(pl.LightningModule):
                 npoint=512,
                 radius=0.2,
                 nsample=64,
-                mlp=[1024, 512, 256, 256],
-                bn=True,
+                mlp=[2048, 1024, 512, 256],
+                bn=self.bn,
                 use_xyz=True,
             )
         )
@@ -32,22 +33,20 @@ class PointNet2(pl.LightningModule):
                 radius=0.4,
                 nsample=64,
                 mlp=[256, 256, 256, 128],
-                bn=True,
+                bn=self.bn,
                 use_xyz=True,
             )
         )
         self.SA_modules.append(
             PointnetSAModule(
                 mlp=[128, 128, 128, 64], 
-                bn=True,
+                bn=self.bn,
                 use_xyz=True,
             )
         )
 
         self.fc_layer = nn.Sequential(
-            nn.Linear(64, 32, bias=False),
-            nn.LeakyReLU(True),
-            nn.Linear(32, 12, bias=False),
+            nn.Linear(64, 12 * self.num_parts, bias=False),
             nn.LeakyReLU(True),
         )
 

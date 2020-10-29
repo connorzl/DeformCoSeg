@@ -56,6 +56,7 @@ class ImNet(nn.Module):
         x_tmp = self.fc5(x_tmp)
         return x_tmp
 
+
 class ODEFuncPointNet(nn.Module):
     def __init__(self, dim=1, latent=1, num_parts=1):
         super(ODEFuncPointNet, self).__init__()
@@ -83,11 +84,10 @@ class ODEFuncPointNet(nn.Module):
         net_input = torch.cat((points, latent_vector), dim=1)
         part_flows = self.net(net_input)
         
-        flow = part_flows
-        #flow = torch.zeros(flow_mask.shape[0], 3).to(part_flows.device)
-        #part_flows = torch.split(part_flows, 3, dim=1)
-        #for i in range(len(part_flows)):
-        #    flow += part_flows[i] * flow_mask.unsqueeze(1)
+        flow = torch.zeros(flow_mask.shape[0], 3).to(part_flows.device)
+        part_flows = torch.split(part_flows, 3, dim=1)
+        for i in range(len(part_flows)):
+            flow += part_flows[i] * flow_mask[:, i].unsqueeze(1)
         return flow
 
 

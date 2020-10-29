@@ -13,7 +13,7 @@ class PointNet2(pl.LightningModule):
         super().__init__()
 
         self.n_parts = n_parts
-        self.bn = True
+        self.bn = False
         self._build_model()
 
     def _build_model(self):
@@ -60,10 +60,10 @@ class PointNet2(pl.LightningModule):
         )
 
         self.FP_modules = nn.ModuleList()
-        self.FP_modules.append(PointnetFPModule(mlp=[128 + 1024, 128, 128, 128]))
-        self.FP_modules.append(PointnetFPModule(mlp=[256 + 256, 256, 128]))
-        self.FP_modules.append(PointnetFPModule(mlp=[256 + 128, 256, 256]))
-        self.FP_modules.append(PointnetFPModule(mlp=[512 + 256, 256, 256]))
+        self.FP_modules.append(PointnetFPModule(mlp=[128 + 1024, 128, 128, 128], bn=self.bn))
+        self.FP_modules.append(PointnetFPModule(mlp=[256 + 256, 256, 128], bn=self.bn))
+        self.FP_modules.append(PointnetFPModule(mlp=[256 + 128, 256, 256], bn=self.bn))
+        self.FP_modules.append(PointnetFPModule(mlp=[512 + 256, 256, 256], bn=self.bn))
 
         self.fc_layer = nn.Sequential(
             nn.Conv1d(128, 128, kernel_size=1, bias=False),

@@ -51,6 +51,8 @@ train_sampler = RandomPairSampler(train_dataset)
 train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False,
                           drop_last=True, sampler=train_sampler, collate_fn=collate)
 
+parameters = []
+
 # PointNet layer.
 pointnet_conf = SimpleNamespace(
     num_point=2048, decoder_type='fc', loss_type='emd')
@@ -60,18 +62,21 @@ if args.pointnet_ckpt != "":
     pointnet.load_state_dict(torch.load(
         args.pointnet_ckpt, map_location=device))
     pointnet.eval()
-    for param in pointnet.parameters():
-        param.requires_grad = False
+else:
+    print("Training PointNet AE jointly!")
+    parameters += list(pointnet.parameters())
 pointnet = pointnet.to(device)
 
 # Flow layer.
 deformer = NeuralFlowDeformer(adjoint=False, dim=3, latent_size=LATENT_SIZE, device=device)
+parameters += list(deformer.parameters())
 deformer.to(device)
-optimizer = optim.Adam(deformer.parameters(), lr=1e-3)
 
 # Losses.
 graph_loss = GraphLossLayerBatch(rigidity, device)
 reverse_loss = ReverseLossLayer()
+
+optimizer = optim.Adam(parameters, lr=1e-3)
 
 # Training loop.
 for epoch in range(epochs):
@@ -119,7 +124,7 @@ for epoch in range(epochs):
                 output += str(epoch).zfill(4) + "_" + \
                     str(src[k]).zfill(2) + "_" + str(tar[k]).zfill(2) + ".obj"
                 with torch.no_grad():
-                    save_snapshot_results(GV_deformed, V_src[k], F_src[k],
+                    save_snapshot_results(GV_deformed, GV_src[k], V_src[k], F_src[k],
                                           V_tar[k], F_tar[k], tar_param[k], output)    
 
         loss.backward()
