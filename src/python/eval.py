@@ -10,10 +10,13 @@ import torch
 from collections import OrderedDict
 from layers.graph_loss_layer import GraphLossLayerBatch
 from layers.reverse_loss_layer import ReverseLossLayer
-#from layers.neuralode_conditional import NeuralFlowDeformer
-from layers.neuralode_conditional_mask import NeuralFlowDeformer
+
+from layers.neuralode_conditional import NeuralFlowDeformer
+#from layers.neuralode_conditional_mask import NeuralFlowDeformer
 from layers.pointnet_ae import Network
-from layers.pointnet_plus_mask import PointNet2
+#from layers.pointnet_plus_mask import PointNet2
+from layers.pointnet_local_features import PointNetMask
+
 from torch.utils.data import DataLoader
 from util.load_data import compute_deformation_pairs, load_neural_deform_data, collate
 from util.save_data import save_snapshot_results
@@ -93,15 +96,16 @@ for batch_idx, data_tensors in enumerate(train_loader):
             GV_features_src = GV_features_src.repeat(1,  GV_src_device.shape[0], 1)
             mask_input = torch.cat([GV_src_device.unsqueeze(0), GV_features_src], dim=2)
             predicted_mask = mask_network(mask_input).squeeze(0)
-            predicted_mask = predicted_mask.softmax(dim=1)
 
             # Deform.
             GV_feature = torch.stack(
                 [GV_features[k], GV_features[batchsize + k]], dim=0) 
-            #GV_deformed = deformer.forward(GV_src_device, GV_feature)
+            GV_deformed = deformer.forward(GV_src_device, GV_feature)
             #screen_mask = src_mask[k][:, 1].to(device)
             #GV_deformed = deformer.forward(GV_src_device, GV_feature, src_mask[k].to(device))
-            GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask)
+            #GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask)
+            
+            GV_deformed = predicted_mask[:, 0].unsqueeze(1) * GV_deformed
 
             # Compute losses.
             loss_forward += graph_loss(

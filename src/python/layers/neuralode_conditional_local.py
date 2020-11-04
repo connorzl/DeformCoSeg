@@ -9,53 +9,6 @@ import torchdiffeq
 print("torchdiffeq library location:", os.path.dirname(torchdiffeq.__file__))
 
 
-class ImNet(nn.Module):
-    """ImNet layer pytorch implementation.
-    """
-
-    def __init__(self, dim=3, in_features=1024, out_features=4, nf=4):
-        """Initialization.
-        Args:
-          dim: int, dimension of input points.
-          in_features: int, length of input features (i.e., latent code).
-          out_features: number of output features.
-          nf: int, width of the second to last layer.
-        """
-        super(ImNet, self).__init__()
-        self.dim = dim
-        self.in_features = in_features
-        self.dimz = dim + in_features
-        self.out_features = out_features
-        self.nf = nf
-        self.activ = nn.LeakyReLU()
-        self.fc0 = nn.Linear(self.dimz, nf*16)
-        self.fc1 = nn.Linear(nf*16 + self.dimz, nf*8)
-        self.fc2 = nn.Linear(nf*8 + self.dimz, nf*4)
-        self.fc3 = nn.Linear(nf*4 + self.dimz, nf*2)
-        self.fc4 = nn.Linear(nf*2 + self.dimz, nf*1)
-        self.fc5 = nn.Linear(nf*1, out_features)
-        self.fc = [self.fc0, self.fc1, self.fc2, self.fc3, self.fc4, self.fc5]
-        self.fc = nn.ModuleList(self.fc)
-
-    def forward(self, latent_vector, points):
-        """Forward method.
-        Args:
-          points: `[batch_size, dim]` tensor
-          latent_vector: `[in_features]` tensor
-        Returns:
-          output through this layer of shape [batch_size, out_features].
-        """
-        latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
-        x = torch.cat((points, latent_vector), dim=1)
-
-        x_tmp = x
-        for dense in self.fc[:4]:
-            x_tmp = self.activ(dense(x_tmp))
-            x_tmp = torch.cat([x_tmp, x], dim=-1)
-        x_tmp = self.activ(self.fc4(x_tmp))
-        x_tmp = self.fc5(x_tmp)
-        return x_tmp
-
 class ODEFuncPointNet(nn.Module):
     def __init__(self, k=1):
         super(ODEFuncPointNet, self).__init__()
@@ -76,10 +29,11 @@ class ODEFuncPointNet(nn.Module):
                 nn.init.normal_(m.weight, mean=0, std=1e-1)
                 nn.init.constant_(m.bias, val=0)
 
-    def forward(self, latent_vector, points):
+    def forward(self, latent_vector, points, t):
         # Concatenate target global features vector to each point.
-        latent_vector = torch.unsqueeze(latent_vector, dim=0).repeat((points.shape[0], 1))
-        net_input = torch.cat((points, latent_vector), dim=1)
+        t_repeat = torch.reshape(t, (1, 1)).repeat(points.shape[0], 1)
+        #latent_vector = latent_vector.unsqueeze(0).repeat(points.shape[0], 1)
+        net_input = torch.cat([points, t_repeat, latent_vector], dim=1)
         velocity_field = self.net(net_input)
         return velocity_field
 
@@ -88,7 +42,6 @@ class NeuralFlowModel(nn.Module):
     def __init__(self, dim=3, latent_size=1, out=3, device=torch.device('cpu')):
         super(NeuralFlowModel, self).__init__()
         self.device = device
-        #self.flow_net = ImNet(dim=dim, in_features=latent_size, out_features=out)
         self.flow_net = ODEFuncPointNet(k=dim+latent_size)
         self.flow_net = self.flow_net.to(device)
         self.latent_updated = False
@@ -104,16 +57,6 @@ class NeuralFlowModel(nn.Module):
         self.latent_sequence = latent_sequence
         self.latent_updated = True
 
-    def latent_at_t(self, t):
-        """Helper fn to compute latent at t."""
-        t0 = 0
-        t1 = 1
-        alpha = (t - t0) / (t1 - t0)  # [batch]
-        latent_t0 = self.latent_sequence[0, :]  
-        latent_t1 = self.latent_sequence[1, :]
-        latent_val = latent_t0 + alpha * (latent_t1 - latent_t0)
-        return latent_val
-
     def forward(self, t, points):
         """
         Args:
@@ -126,8 +69,7 @@ class NeuralFlowModel(nn.Module):
         if not self.latent_updated:
             raise RuntimeError('Latent not updated. '
                                'Use .update_latents() to update the source and target latents.')
-        latent_val = self.latent_at_t(t)
-        flow = self.flow_net(latent_val, points)  # [batch, num_pints, dim]
+        flow = self.flow_net(self.latent_sequence, points, t)
         return flow
 
 
