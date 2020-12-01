@@ -38,6 +38,32 @@ class GraphLossFunction(Function):
         return (grad_h*(lossD1_gradient + lossR1_gradient*rigidity2.tolist()).to(device)),\
             None, None, None, None
 
+class RigidityLossFunction(Function):
+    @staticmethod
+    def forward(ctx, V1, E1, rigidity2, param_id1):
+        global device
+        test_V1 = torch.from_numpy(V1.data.cpu().numpy())
+            
+        lossR1 = pyDeform.GraphEdgeLoss_forward(test_V1, E1, int(param_id1)) * 0.5
+        variables = [V1, E1, rigidity2, torch.tensor(param_id1)]
+        ctx.save_for_backward(*variables)
+        return (lossR1.sum() * rigidity2.tolist()).to(device)
+
+    @staticmethod
+    def backward(ctx, grad_h):
+        global device
+        V1 = ctx.saved_variables[0]
+        E1 = ctx.saved_variables[1]
+        rigidity2 = ctx.saved_variables[2]
+        param_id1 = ctx.saved_variables[3].tolist()
+
+        test_V1 = torch.from_numpy(V1.data.cpu().numpy())
+
+        lossR1_gradient = pyDeform.GraphEdgeLoss_backward(
+            test_V1, E1, param_id1)
+
+        return (grad_h*(lossR1_gradient*rigidity2.tolist()).to(device)),\
+            None, None, None
 
 class GraphLossLayer(nn.Module):
     def __init__(self, V1, F1, graph_V1, graph_E1,
@@ -86,6 +112,15 @@ class GraphLossLayerBatch(nn.Module):
                                            self.rigidity2, src_param_id, tar_param_id)
         return GraphLossFunction.apply(V2, E2,
                                         self.rigidity2, tar_param_id, src_param_id)
+
+class IntermediateLossLayer(nn.Module):
+    def __init__(self, rigidity):
+        super(IntermediateLossLayer, self).__init__()
+
+        self.rigidity2 = torch.tensor(rigidity * rigidity)
+
+    def forward(self, V1, E1, src_param_id):
+        return RigidityLossFunction.apply(V1, E1, self.rigidity2, src_param_id)
 
 
 def Finalize(src_V, src_F, src_E, src_to_graph, graph_V, rigidity, param_id):

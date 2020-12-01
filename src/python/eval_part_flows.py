@@ -12,9 +12,7 @@ from layers.graph_loss_layer import GraphLossLayerBatch
 from layers.reverse_loss_layer import ReverseLossLayer
 
 from layers.neuralode_conditional import NeuralFlowDeformer
-#from layers.neuralode_conditional_mask import NeuralFlowDeformer
 from layers.pointnet_ae import Network
-#from layers.pointnet_plus_mask import PointNet2
 from layers.pointnet_local_features import PointNetMask
 
 from torch.utils.data import DataLoader
@@ -59,8 +57,10 @@ pointnet = pointnet.to(device)
 # Load modules from checkpoint.
 NUM_PARTS = 2
 ckpt = torch.load(args.ckpt, map_location=device)
-deformer = ckpt["deformer"].to(device)
-deformer.eval()
+deformer_0 = ckpt["deformer_0"].to(device)
+deformer_0.eval()
+deformer_1 = ckpt["deformer_1"].to(device)
+deformer_1.eval()
 mask_network = ckpt["mask_network"].to(device)
 mask_network.eval()
 
@@ -90,6 +90,7 @@ for batch_idx, data_tensors in enumerate(train_loader):
             # Copies of normalized GV for deformation training.
             GV_tar_origin = GV_tar[k].clone()
             GV_src_device = GV_src[k].to(device)
+            GV_feature = torch.stack([GV_features[k], GV_features[batchsize + k]], dim=0)
 
             # Predict masks.
             GV_features_src = GV_features[k].view(1, 1, -1)
@@ -98,14 +99,13 @@ for batch_idx, data_tensors in enumerate(train_loader):
             predicted_mask = mask_network(mask_input).squeeze(0)
 
             # Deform.
-            GV_feature = torch.stack(
-                [GV_features[k], GV_features[batchsize + k]], dim=0) 
-            GV_deformed = deformer.forward(GV_src_device, GV_feature)
-            #screen_mask = src_mask[k][:, 1].to(device)
-            #GV_deformed = deformer.forward(GV_src_device, GV_feature, src_mask[k].to(device))
-            #GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask)
-            
-            GV_deformed = GV_src_device + predicted_mask[:, 0].unsqueeze(1) * (GV_deformed - GV_src_device)
+            GV_deformed_0 = deformer_0.forward(GV_src_device, GV_feature)
+            flow_0_unmasked = (GV_deformed_0 - GV_src_device)
+            flow_0_masked = predicted_mask[:, 0].unsqueeze(1) * (GV_deformed_0 - GV_src_device)
+            GV_deformed_1 = deformer_1.forward(GV_src_device, GV_feature)
+            flow_1_unmasked = (GV_deformed_1 - GV_src_device)
+            flow_1_masked = predicted_mask[:, 1].unsqueeze(1) * (GV_deformed_1 - GV_src_device)
+            GV_deformed = GV_src_device + flow_0_masked + flow_1_masked
 
             # Compute losses.
             loss_forward += graph_loss(
@@ -116,7 +116,8 @@ for batch_idx, data_tensors in enumerate(train_loader):
             loss_mask += torch.norm(ones - mask_norm)
 
             output = output_prefix + "_eval_" + str(src[k]).zfill(2) + "_" + str(tar[k]).zfill(2)
-
+    
+            # Save predicted mask for visualization.
             mask_0 = predicted_mask[:, 0].cpu().detach().numpy()
             np.savetxt(output + "_mask.txt", mask_0, fmt="%.6f")
 
@@ -132,6 +133,19 @@ for batch_idx, data_tensors in enumerate(train_loader):
             
             save_snapshot_results(GV_deformed, GV_src[k], V_src[k], F_src[k],
                                   V_tar[k], F_tar[k], tar_param[k], output + ".obj")    
+            
+            GV_deformed_0_unmasked = GV_src_device + flow_0_unmasked
+            GV_deformed_0_masked = GV_src_device + flow_0_masked
+            GV_deformed_1_unmasked = GV_src_device + flow_1_unmasked
+            GV_deformed_1_masked = GV_src_device + flow_1_masked
+            save_snapshot_results(GV_deformed_0_unmasked, GV_src[k], V_src[k], F_src[k],
+                                  V_tar[k], F_tar[k], tar_param[k], output + "_0_unmasked.obj")    
+            save_snapshot_results(GV_deformed_0_masked, GV_src[k], V_src[k], F_src[k],
+                                  V_tar[k], F_tar[k], tar_param[k], output + "_0_masked.obj")    
+            save_snapshot_results(GV_deformed_1_unmasked, GV_src[k], V_src[k], F_src[k],
+                                  V_tar[k], F_tar[k], tar_param[k], output + "_1_unmasked.obj")    
+            save_snapshot_results(GV_deformed_1_masked, GV_src[k], V_src[k], F_src[k],
+                                  V_tar[k], F_tar[k], tar_param[k], output + "_1_masked.obj")    
    
         print("Batch: {} | Shape_Pair: ({}, {}) | "
                 "Loss_forward: {:.6f} | Loss_backward: {:.6f} | Loss_Mask: {:.6f}".format(

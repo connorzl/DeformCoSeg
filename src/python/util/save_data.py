@@ -40,7 +40,7 @@ def save_snapshot_results(V_deformed, GV, V, F, V_targ, F_targ, param_id_targ, o
    
     # Visualize flow.
     flow = V_deformed_copy - GV_copy
-    flow_output = output_path[:-4] + "_flow_unmasked.txt"
+    flow_output = output_path[:-4] + "_flow.txt"
     np.savetxt(flow_output, flow)
     pyDeform.SaveMesh(output_path[:-4] + "_flow_origin.obj", GV_copy, F)
 

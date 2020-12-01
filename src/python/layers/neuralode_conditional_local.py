@@ -75,7 +75,7 @@ class NeuralFlowModel(nn.Module):
 
 class NeuralFlowDeformer(nn.Module):
     def __init__(self, adjoint=False, dim=3, latent_size=1, out=3, method='dopri5', \
-            atol=1e-5, rtol=1e-5, device=torch.device('cpu')):
+            atol=1e-4, rtol=1e-4, device=torch.device('cpu')):
         """Initialize. The parameters are the parameters for the Deformation Flow network.
         Args:
           dim: int, physical dimensions. Either 2 for 2d or 3 for 3d.
@@ -88,10 +88,8 @@ class NeuralFlowDeformer(nn.Module):
             self.odeint = odeint_adjoint
         else:
             self.odeint = odeint
-        self.timing = torch.from_numpy(np.array([0., 1.]).astype('float32'))
+        self.timing = torch.from_numpy(np.array([0., 0.2, 0.4, 0.6, 0.8, 1.]).astype('float32'))
         self.timing = self.timing.to(device)
-        self.timing_inv = torch.from_numpy(np.array([1, 0]).astype('float32'))
-        self.timing_inv = self.timing_inv.to(device)
         self.rtol = rtol
         self.atol = atol
         self.device = device
@@ -112,5 +110,5 @@ class NeuralFlowDeformer(nn.Module):
         self.net.update_latents(latent_sequence)
         points_transformed = self.odeint(self.net, points, self.timing, method=self.method,
                                          rtol=self.rtol, atol=self.atol)
-        return points_transformed[-1]
+        return points_transformed
 

@@ -29,7 +29,7 @@ class SAPIENBase(Dataset):
 
     @staticmethod
     def _get_filenames(data_root):
-        return sorted(glob.glob(os.path.join(data_root, "*.obj"), recursive=True))
+        return sorted(glob.glob(os.path.join(data_root, "*.obj"), recursive=True))[:16]
 
     def __len__(self):
         return self.n_shapes
@@ -71,9 +71,6 @@ class SAPIENMesh(SAPIENBase):
         # Load all the shapes.
         print("Loading shapes!")
         time_start = time.time()
-        #pool = multiprocessing.Pool(processes=2)
-        #self.data = pool.map(load_neural_deform_data, self.files)
-        #self.segmentation_masks = pool.map(load_segmentation_mask, self.files)
         self.data = []
         self.segmentation_masks = []
         for f in self.files:
@@ -136,7 +133,7 @@ class RandomPairSampler(Sampler):
         self.dataset = dataset
         self.pairs = compute_deformation_pairs(0, dataset.n_shapes)
     def __iter__(self):
-        pairs = np.random.permutation(self.pairs)
+        pairs = np.random.permutation(self.pairs)[:2048]
         src_idxs = []
         tar_idxs = []
         for (i, j) in pairs:

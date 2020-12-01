@@ -11,11 +11,9 @@ from collections import OrderedDict
 from layers.graph_loss_layer import GraphLossLayerBatch
 from layers.reverse_loss_layer import ReverseLossLayer
 
-from layers.neuralode_conditional import NeuralFlowDeformer
-#from layers.neuralode_conditional_mask import NeuralFlowDeformer
-from layers.pointnet_ae import Network
-#from layers.pointnet_plus_mask import PointNet2
-from layers.pointnet_local_features import PointNetMask
+from layers.neuralode_conditional_local import NeuralFlowDeformer
+from layers.pointnet_local_features import PointNetSeg
+from layers.pointnet_plus_correlate import PointNetCorrelate
 
 from torch.utils.data import DataLoader
 from util.load_data import compute_deformation_pairs, load_neural_deform_data, collate
@@ -25,6 +23,7 @@ import pyDeform
 import numpy as np
 import argparse
 import random
+from sklearn.manifold import TSNE
 from types import SimpleNamespace
 
 parser = argparse.ArgumentParser(description='Rigid Deformation.')
@@ -33,9 +32,13 @@ parser.add_argument('--output_prefix', default='./cad-output')
 parser.add_argument('--ckpt', default='')
 parser.add_argument('--rigidity', default='0.1')
 parser.add_argument('--device', default='cuda')
-parser.add_argument('--pointnet_ckpt', default='')
 parser.add_argument('--batchsize', default=1)
 args = parser.parse_args()
+
+RANDOM_SEED = 1
+
+torch.manual_seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
 
 output_prefix = args.output_prefix
 rigidity = float(args.rigidity)
@@ -48,21 +51,15 @@ train_loader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False,
                           drop_last=True, sampler=train_sampler, collate_fn=collate)
 
 # PointNet layer.
-pointnet_conf = SimpleNamespace(
-    num_point=2048, decoder_type='fc', loss_type='emd')
-pointnet = Network(pointnet_conf, 1024)
-pointnet.load_state_dict(torch.load(
-    args.pointnet_ckpt, map_location=device))
-pointnet.eval()
-pointnet = pointnet.to(device)
-
-# Load modules from checkpoint.
-NUM_PARTS = 2
 ckpt = torch.load(args.ckpt, map_location=device)
 deformer = ckpt["deformer"].to(device)
 deformer.eval()
-mask_network = ckpt["mask_network"].to(device)
-mask_network.eval()
+pointnet_local_features = ckpt["pointnet_local_features"].to(device)
+pointnet_local_features.eval()
+pointnet_correlation = ckpt["pointnet_correlation"].to(device)
+pointnet_correlation.eval()
+feature_propagator = ckpt["feature_propagator"].to(device)
+feature_propagator.eval()
 
 # Prepare data for deformation
 graph_loss = GraphLossLayerBatch(rigidity, device)
@@ -76,68 +73,59 @@ for batch_idx, data_tensors in enumerate(train_loader):
         
         # Retrieve data for deformation
         src, tar, src_param, tar_param, src_data, tar_data, \
-            V_src_sample, V_tar_sample, src_mask, tar_mask = data_tensors
+            src_sample, tar_sample, src_mask, tar_mask = data_tensors
         V_src, F_src, E_src, GV_src, GE_src = src_data
         V_tar, F_tar, E_tar, GV_tar, GE_tar = tar_data
         
-        # Prepare PointNet input.
-        GV_pointnet_inputs = torch.cat([V_src_sample, V_tar_sample], dim=0).to(device)
-        _, GV_features = pointnet(GV_pointnet_inputs)
-        GV_features = GV_features.detach()
-       
+        # Extract local per-point features for each shape.
+        src_sample_device = src_sample.to(device)
+        tar_sample_device = tar_sample.to(device)
+        src_sample_features = pointnet_local_features(src_sample_device)
+        tar_sample_features = pointnet_local_features(tar_sample_device)
+
+        # Correlation input.
+        num_samples = src_sample_device.shape[1]
+        src_sample_correlation = torch.cat([src_sample_device, src_sample_features, torch.zeros(
+            batchsize, num_samples, 1).to(device)], dim=2)
+        tar_sample_correlation = torch.cat([tar_sample_device, tar_sample_features, torch.ones(
+            batchsize, num_samples, 1).to(device)], dim=2)
+        correlation_sample_input = torch.cat([src_sample_correlation, tar_sample_correlation], dim=1)
+        sample_flow_features = pointnet_correlation(correlation_sample_input)
+        sample_flow_features = sample_flow_features[:, :num_samples, :]
+
         # Deform each (src, tar) pair.
         for k in range(batchsize):
             # Copies of normalized GV for deformation training.
             GV_tar_origin = GV_tar[k].clone()
             GV_src_device = GV_src[k].to(device)
 
-            # Predict masks.
-            GV_features_src = GV_features[k].view(1, 1, -1)
-            GV_features_src = GV_features_src.repeat(1,  GV_src_device.shape[0], 1)
-            mask_input = torch.cat([GV_src_device.unsqueeze(0), GV_features_src], dim=2)
-            predicted_mask = mask_network(mask_input).squeeze(0)
-
-            # Deform.
-            GV_feature = torch.stack(
-                [GV_features[k], GV_features[batchsize + k]], dim=0) 
-            GV_deformed = deformer.forward(GV_src_device, GV_feature)
-            #screen_mask = src_mask[k][:, 1].to(device)
-            #GV_deformed = deformer.forward(GV_src_device, GV_feature, src_mask[k].to(device))
-            #GV_deformed = deformer.forward(GV_src_device, GV_feature, predicted_mask)
+            # Propogate features from uniform samples to GV_src_device
+            sample_flow_features_k = sample_flow_features[k].permute(1, 0).contiguous()
+            GV_flow_features = feature_propagator(GV_src_device.unsqueeze(
+                0), src_sample_device[k].unsqueeze(0), None, sample_flow_features_k.unsqueeze(0))
+            GV_flow_features = GV_flow_features.squeeze(0).permute(1, 0)
             
-            GV_deformed = GV_src_device + predicted_mask[:, 0].unsqueeze(1) * (GV_deformed - GV_src_device)
+            # Deform.
+            points_transformed = deformer.forward(GV_src_device, GV_flow_features)
+            
+            GV_deformed = points_transformed[-1]
 
             # Compute losses.
             loss_forward += graph_loss(
                 GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param[k], tar_param[k], 0)
-            loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device) 
-            ones = torch.ones(predicted_mask.shape[0], 1).to(device)
-            mask_norm = torch.norm(predicted_mask, dim=1)
-            loss_mask += torch.norm(ones - mask_norm)
-
+            loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device)
+        
             output = output_prefix + "_eval_" + str(src[k]).zfill(2) + "_" + str(tar[k]).zfill(2)
-
-            mask_0 = predicted_mask[:, 0].cpu().detach().numpy()
-            np.savetxt(output + "_mask.txt", mask_0, fmt="%.6f")
-
-            # Output segmentation
-            part_vertices = [[] for _ in range(NUM_PARTS)]
-            _, max_indices = torch.max(predicted_mask, dim=1)
-            for l in range(max_indices.shape[0]):
-                part = max_indices[l]
-                part_vertices[part].append(GV_src[k][l].numpy())
-            for l, part in enumerate(part_vertices):
-                part_output = output + "_part_" + str(l).zfill(2) + ".xyz"
-                np.savetxt(part_output, np.asarray(part), fmt="%.6f")
-            
+           
+            for i in range(len(points_transformed)-1):
+                save_snapshot_results(points_transformed[i], GV_src[k], V_src[k], F_src[k],
+                                      V_tar[k], F_tar[k], tar_param[k], output + "_intermediate_" + str(i) + ".obj")
             save_snapshot_results(GV_deformed, GV_src[k], V_src[k], F_src[k],
-                                  V_tar[k], F_tar[k], tar_param[k], output + ".obj")    
-   
+                                  V_tar[k], F_tar[k], tar_param[k], output + ".obj")   
+
         print("Batch: {} | Shape_Pair: ({}, {}) | "
-                "Loss_forward: {:.6f} | Loss_backward: {:.6f} | Loss_Mask: {:.6f}".format(
+                "Loss_forward: {:.6f} | Loss_backward: {:.6f}".format(
                   batch_idx, src, tar, np.sqrt(
                       loss_forward.item() / GV_src_device.shape[0] / batchsize),
                   np.sqrt(loss_backward.item() /
-                          GV_tar_origin.shape[0] / batchsize),
-                  np.sqrt(loss_mask.item() / GV_src_device.shape[0] / batchsize)))
-
+                          GV_tar_origin.shape[0] / batchsize)))
