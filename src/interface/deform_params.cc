@@ -12,9 +12,18 @@ int CreateParams() {
 DeformParams& GetParams(int param_id) {
 	return g_params[param_id];
 }
-void ClearOldestParams() {
-	g_params.erase(g_params.begin());
+
+std::vector<float> GetNormalizeParams(int param_id) {
+	std::vector<float> normalize_params;
+	auto& params = GetParams(param_id);
+	
+	normalize_params.push_back(params.scale);
+	for (int i = 0; i < 3; i++) {
+		normalize_params.push_back(params.trans[i]);
+	}
+	return normalize_params;
 }
+
 
 int InitializeDeformTemplate(
 	torch::Tensor tensorV,
@@ -38,7 +47,7 @@ int InitializeDeformTemplate(
 
 	params.scale = params.ref.GetScale();
 	params.trans = params.ref.GetTranslation();
-
+	
 	//std::cout << "scale:" << params.scale << std::endl;
 	//std::cout << "trans:" << params.trans[0] << "," << params.trans[1] << "," << params.trans[2] << std::endl;
 

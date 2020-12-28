@@ -152,6 +152,8 @@ for epoch in range(epochs):
             GV_feature = torch.stack(
                 [GV_features[k], GV_features[batchsize + k]], dim=0) 
 
+            V_src_sample_device = V_src_sample[k].to(device)
+
             # Predict masks.
             GV_features_src = GV_features[k].view(1, 1, -1)
             GV_features_src = GV_features_src.repeat(1,  GV_src_device.shape[0], 1)
@@ -160,24 +162,29 @@ for epoch in range(epochs):
 
             # Deform.
             GV_deformed_0 = deformers[0].forward(GV_src_device, GV_feature)
-            loss_rigidity += compute_rigidity_loss(GV_src_device, GV_deformed_0)
             flow_0 = predicted_mask[:, 0].unsqueeze(1) * (GV_deformed_0 - GV_src_device) 
-
             GV_deformed_1 = deformers[1].forward(GV_src_device, GV_feature)
-            loss_rigidity += compute_rigidity_loss(GV_src_device, GV_deformed_1)
             flow_1 = predicted_mask[:, 1].unsqueeze(1) * (GV_deformed_1 - GV_src_device) 
             
             GV_deformed = GV_src_device + flow_0 + flow_1
+           
+            # Rigid transform losses.
+            V_sample_deformed_0 = deformers[0].forward(V_src_sample_device, GV_feature)
+            loss_rigidity += compute_rigidity_loss(V_src_sample_device, V_sample_deformed_0)
+            V_sample_deformed_1 = deformers[1].forward(V_src_sample_device, GV_feature)
+            loss_rigidity += compute_rigidity_loss(V_src_sample_device, V_sample_deformed_1)
 
+            # Mask loss.
             ones = torch.ones(predicted_mask.shape[0], 1).to(device)
             mask_norm = torch.norm(predicted_mask, dim=1)
             loss_mask += torch.norm(ones - mask_norm)
             
-            # Compute losses
+            # Fitting and rigidity losses.
             loss_forward += graph_loss(
                 GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param[k], tar_param[k], 0)
             loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device)
-            loss += loss_forward + loss_backward + 10 * loss_rigidity + 0.005 * loss_mask
+
+            loss += loss_forward + loss_backward + 10 * loss_rigidity 
 
             # Save results.
             if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:

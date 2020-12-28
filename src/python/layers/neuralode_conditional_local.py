@@ -32,11 +32,9 @@ class ODEFuncPointNet(nn.Module):
     def forward(self, latent_vector, points, t):
         # Concatenate target global features vector to each point.
         t_repeat = torch.reshape(t, (1, 1)).repeat(points.shape[0], 1)
-        #latent_vector = latent_vector.unsqueeze(0).repeat(points.shape[0], 1)
         net_input = torch.cat([points, t_repeat, latent_vector], dim=1)
         velocity_field = self.net(net_input)
         return velocity_field
-
 
 class NeuralFlowModel(nn.Module):
     def __init__(self, dim=3, latent_size=1, out=3, device=torch.device('cpu')):
@@ -71,7 +69,6 @@ class NeuralFlowModel(nn.Module):
                                'Use .update_latents() to update the source and target latents.')
         flow = self.flow_net(self.latent_sequence, points, t)
         return flow
-
 
 class NeuralFlowDeformer(nn.Module):
     def __init__(self, adjoint=False, dim=3, latent_size=1, out=3, method='dopri5', \
@@ -110,5 +107,5 @@ class NeuralFlowDeformer(nn.Module):
         self.net.update_latents(latent_sequence)
         points_transformed = self.odeint(self.net, points, self.timing, method=self.method,
                                          rtol=self.rtol, atol=self.atol)
-        return points_transformed
+        return points_transformed[-1]
 

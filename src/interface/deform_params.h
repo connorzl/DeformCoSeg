@@ -25,7 +25,9 @@ struct DeformParams
 };
 
 int CreateParams();
-void ClearOldestParams();
+
+std::vector<float> GetNormalizeParams(int param_id);
+
 DeformParams& GetParams(int param_id);
 
 int InitializeDeformTemplate(

@@ -13,7 +13,7 @@ from layers.pointnet_local_features import PointNetSeg
 from layers.dgcnn import DGCNN
 #from layers.pointnet_plus_knn import PointNet2SemSegSSG
 #from layers.pointnet_plus_correlate import PointNetCorrelate
-from pointnet2_ops.pointnet2_modules import PointnetFPModule
+#from pointnet2_ops.pointnet2_modules import PointnetFPModule
 
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -65,27 +65,20 @@ parameters += list(pointnet_local_features.parameters())
 pointnet_local_features = pointnet_local_features.to(device)
 
 # Extract features that correlate two shapes.
-pointnet_correlation = DGCNN(input_features=3+LATENT_SIZE+1, output_features=LATENT_SIZE)
+feature_correlator = DGCNN(input_features=3+LATENT_SIZE+1, output_features=LATENT_SIZE)
 #pointnet_correlation = PointNet2SemSegSSG({'feat_dim': LATENT_SIZE+1, 'output_dim': LATENT_SIZE})
-#pointnet_correlation = PointNetCorrelate(input_features=LATENT_SIZE+1, output_features=LATENT_SIZE)
-parameters += list(pointnet_correlation.parameters())
-pointnet_correlation = pointnet_correlation.to(device)
+#feature_correlator = PointNetCorrelate(input_features=LATENT_SIZE+1, output_features=LATENT_SIZE)
+parameters += list(feature_correlator.parameters())
+feature_correlator = feature_correlator.to(device)
 
 # Flow layer.
 deformer = NeuralFlowDeformer(adjoint=False, dim=4, latent_size=LATENT_SIZE, device=device)
 parameters += list(deformer.parameters())
 deformer.to(device)
 
-feature_propagator = PointnetFPModule(mlp=[LATENT_SIZE, LATENT_SIZE, LATENT_SIZE], bn=False)
-parameters += list(feature_propagator.parameters())
-feature_propagator.to(device)
-
 # Losses.
 graph_loss = GraphLossLayerBatch(rigidity, device)
 reverse_loss = ReverseLossLayer()
-
-intermediate_loss = IntermediateLossLayer(rigidity)
-
 optimizer = optim.Adam(parameters, lr=1e-3)
 
 # Training loop.
@@ -100,49 +93,39 @@ for epoch in range(epochs):
         
         # Retrieve data for deformation
         src, tar, src_param, tar_param, src_data, tar_data, \
-            src_sample, tar_sample, _, _ = data_tensors
+            src_sample, tar_sample, _, _, _, _ = data_tensors
         V_src, F_src, E_src, GV_src, GE_src = src_data
         V_tar, F_tar, E_tar, GV_tar, GE_tar = tar_data
             
-        # Extract local per-point features for each shape.
-        src_sample_device = src_sample.to(device)
-        tar_sample_device = tar_sample.to(device)
-        src_sample_features = pointnet_local_features(src_sample_device)
-        tar_sample_features = pointnet_local_features(tar_sample_device)
-
-        # Correlation input.
-        num_samples = src_sample_device.shape[1]
-        src_sample_correlation = torch.cat([src_sample_device, src_sample_features, torch.zeros(
-            batchsize, num_samples, 1).to(device)], dim=2)
-        tar_sample_correlation = torch.cat([tar_sample_device, tar_sample_features, torch.ones(
-            batchsize, num_samples, 1).to(device)], dim=2)
-        correlation_sample_input = torch.cat([src_sample_correlation, tar_sample_correlation], dim=1)
-        sample_flow_features = pointnet_correlation(correlation_sample_input)
-        sample_flow_features = sample_flow_features[:, :num_samples, :]
-       
         # Deform each (src, tar) pair.
         for k in range(batchsize):
             # Copies of normalized GV for deformation training.
             GV_tar_origin = GV_tar[k].clone()
             GV_src_device = GV_src[k].to(device)
+            GV_tar_device = GV_tar[k].to(device)
+
+            GV_src_features = pointnet_local_features(GV_src_device.unsqueeze(0))
+            GV_tar_features = pointnet_local_features(GV_tar_device.unsqueeze(0))
             
-            # Propogate features from uniform samples to GV_src_device
-            sample_flow_features_k = sample_flow_features[k].permute(1, 0).contiguous()
-            GV_flow_features = feature_propagator(GV_src_device.unsqueeze(
-                0), src_sample_device[k].unsqueeze(0), None, sample_flow_features_k.unsqueeze(0))
-            GV_flow_features = GV_flow_features.squeeze(0).permute(1, 0)
-            
+            # Correlate source and target local features.
+            num_src_vertices = GV_src_device.shape[0]
+            num_tar_vertices = GV_tar_device.shape[0]
+            src_correlation = torch.cat([GV_src_device, GV_src_features.squeeze(0),
+                torch.zeros(num_src_vertices, 1).to(device)], dim=1)
+            tar_correlation = torch.cat([GV_tar_device, GV_tar_features.squeeze(0),
+                torch.ones(num_tar_vertices, 1).to(device)], dim=1)
+            correlation_input = torch.cat([src_correlation, tar_correlation], dim=0).unsqueeze(0)
+            correlated_flow_features = feature_correlator(correlation_input).squeeze(0)
+            src_correlated_flow_features = correlated_flow_features[:num_src_vertices]
+
             # Deform.
-            deformed = deformer.forward(GV_src_device, GV_flow_features)
-            GV_deformed = deformed[-1]
+            GV_deformed = deformer.forward(GV_src_device, src_correlated_flow_features)
 
             # Compute losses.
             loss_forward += graph_loss(
                 GV_deformed, GE_src[k], GV_tar[k], GE_tar[k], src_param[k], tar_param[k], 0)
             loss_backward += reverse_loss(GV_deformed, GV_tar_origin, device) 
-            #for i in range(1, len(deformed)-1):
-            #    loss_intermediate += intermediate_loss(deformed[i], GE_src[k], src_param[k])
-            loss += loss_forward + loss_backward #+ loss_intermediate
+            loss += loss_forward + loss_backward 
            
             # Save results.
             if (epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1) and k < 5:
@@ -181,7 +164,6 @@ for epoch in range(epochs):
                   np.sqrt(loss_backward.item() /
                           GV_tar[0].shape[0] / batchsize),
                   0))
-                  #np.sqrt(loss_intermediate.item() / GV_src[0].shape[0] / batchsize)))
 
         if epoch % EPOCH_SNAPSHOT_INTERVAL == 0 or epoch == epochs - 1:
             if epoch == epochs - 1:
@@ -191,6 +173,5 @@ for epoch in range(epochs):
                     str(epoch).zfill(4) + ".ckpt"
             torch.save({"deformer": deformer,
                         "pointnet_local_features": pointnet_local_features,
-                        "pointnet_correlation": pointnet_correlation,
-                        "feature_propagator": feature_propagator,
+                        "feature_correlator": feature_correlator,
                         "optim": optimizer}, output)

@@ -10,7 +10,8 @@ import numpy as np
 import trimesh
 import glob
 from collections import OrderedDict
-from load_data import load_neural_deform_data, compute_deformation_pairs, load_segmentation_mask
+from load_data import load_neural_deform_data, compute_deformation_pairs
+from load_data import load_segmentation_mask, load_rigid_transform
 import multiprocessing
 import time 
 
@@ -73,9 +74,11 @@ class SAPIENMesh(SAPIENBase):
         time_start = time.time()
         self.data = []
         self.segmentation_masks = []
+        self.rigid_transforms = []
         for f in self.files:
             self.data.append(load_neural_deform_data(f))
             self.segmentation_masks.append(load_segmentation_mask(f))
+            self.rigid_transforms.append(load_rigid_transform(f))
         print("Done loading shapes:", time.time() - time_start)
 
         # Preprocess all the shapes.
@@ -90,17 +93,14 @@ class SAPIENMesh(SAPIENBase):
         print("Done preprocessing shapes:", time.time() - time_start)
 
     def get_pairs(self, i, j):
-        data_i, seg_i = self.get_single(i)
-        data_j, seg_j = self.get_single(j)
-        return i, j, self.param_ids[i], self.param_ids[j], data_i, data_j, seg_i, seg_j
+        data_i, seg_i, trans_i = self.get_single(i)
+        data_j, seg_j, trans_j = self.get_single(j)
+        return i, j, self.param_ids[i], self.param_ids[j], \
+            data_i, data_j, seg_i, seg_j, trans_i, trans_j
 
     def get_single(self, i):
         data_i = [x.clone() for x in self.data[i]]
-        if self.segmentation_masks[i] is not None:
-            mask_i = self.segmentation_masks[i].clone()
-        else:
-            mask_i = None
-        return self.data[i], self.segmentation_masks[i]
+        return self.data[i], self.segmentation_masks[i], self.rigid_transforms[i]
 
     def __getitem__(self, idx):
         """Get a random pair of meshes.

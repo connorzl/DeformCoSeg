@@ -26,8 +26,10 @@ def collate(batch):
     GE_js = []
     seg_is = []
     seg_js = []
+    trans_is = []
+    trans_js = []
 
-    for (i, j, i_param, j_param, data_i, data_j, seg_i, seg_j) in batch:
+    for (i, j, i_param, j_param, data_i, data_j, seg_i, seg_j, trans_i, trans_j) in batch:
         i_idxs.append(i)
         j_idxs.append(j)
         i_params.append(i)
@@ -52,11 +54,15 @@ def collate(batch):
 
         seg_is.append(seg_i)
         seg_js.append(seg_j)
+
+        trans_is.append(trans_i)
+        trans_js.append(trans_j)
         
     V_surf_is = torch.stack(V_surf_is, dim=0)
     V_surf_js = torch.stack(V_surf_js, dim=0)
     return [i_idxs, j_idxs, i_params, j_params, (V_is, F_is, E_is, GV_is, GE_is),
-            (V_js, F_js, E_js, GV_js, GE_js), V_surf_is, V_surf_js, seg_is, seg_js]
+            (V_js, F_js, E_js, GV_js, GE_js), V_surf_is, V_surf_js, seg_is, seg_js,
+            trans_is, trans_js]
 
 
 def compute_deformation_pairs(src_idx, n):
@@ -89,41 +95,10 @@ def load_mesh(mesh_path, intermediate=10000, final=2048):
     return V, F, E, V_sample
 
 
-def load_segmentation(mesh_paths, indices):
-    files_dir = os.path.dirname(mesh_paths[0])
-    part_sizes_all = []
-
-    for i in range(len(mesh_paths)):
-        segmentation_file = "segmentation_" + str(indices[i]).zfill(2) + ".txt"
-        segmentation_file = os.path.join(files_dir, segmentation_file)
-        
-        # Count number of labels, assume labels start from 0.
-        curr_part_sizes = []
-        curr_label = -1
-        curr_size = 0
-        with open(segmentation_file, "r") as f:
-            lines = [line.rstrip("\n").split(",") for line in f]
-            for i, line in enumerate(lines):
-                label = int(line[1])
-                if i == 0: 
-                    curr_label = label
-                    curr_size = 1
-                elif curr_label == label:
-                    curr_size += 1
-                else:
-                    curr_part_sizes.append(curr_size)
-                    curr_label = label
-                    curr_size = 1
-            curr_part_sizes.append(curr_size)
-        part_sizes_all.append(curr_part_sizes)        
-
-    return part_sizes_all
-
-
 def load_segmentation_mask(mesh_path):
     files_dir = os.path.dirname(mesh_path)
 
-    segmentation_file = mesh_path[:-4] + ".txt"
+    segmentation_file = mesh_path[:-4] + "_mask.txt"
     if not(os.path.exists(segmentation_file)):
         return None
 
@@ -145,11 +120,31 @@ def load_segmentation_mask(mesh_path):
         mask = np.zeros((len(lines), num_labels))
         for i, line in enumerate(lines):
             label = int(line[1])
-            mask[i, label] = 1.0
+            mask[i, label] = 1
     return torch.from_numpy(mask)
 
+def load_rigid_transform(mesh_path):
+    files_dir = os.path.dirname(mesh_path)
 
-def load_neural_deform_data(mesh_path, intermediate=10000, final=1024):
+    transform_file = mesh_path[:-4] + "_transform.txt"
+    if not(os.path.exists(transform_file)):
+        return None
+
+    with open(transform_file, "r") as f:
+        params = [line.rstrip("\n").split(",") for line in f]
+
+        # Number of parts.
+        num_parts = len(params)
+        transform = np.zeros((num_parts, 12))
+        
+        # Populate mask.
+        for i, part_transform in enumerate(params):
+            part_transform = np.asarray([float(x) for x in part_transform])
+            transform[i] = part_transform 
+    f.close()
+    return torch.from_numpy(transform)
+
+def load_neural_deform_data(mesh_path, intermediate=10000, final=2048):
     V, F, E, V_surf = load_mesh(mesh_path, intermediate, final)
     V = torch.from_numpy(V)
     F = torch.from_numpy(F)
